@@ -605,6 +605,10 @@ namespace internal {
   CPP(ConsoleTimeStamp, kDontAdaptArgumentsSentinel)                           \
   CPP(ConsoleContext, kDontAdaptArgumentsSentinel)                             \
                                                                                \
+                                                                               \
+  /* Composite */                                                              \
+  CPP(CompositeConstructor, JSParameterCount(1))                               \
+                                                                               \
   /* DataView */                                                               \
   /* ES #sec-dataview-constructor */                                           \
   CPP(DataViewConstructor, kDontAdaptArgumentsSentinel)                        \

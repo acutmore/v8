@@ -39,6 +39,7 @@
 #include "src/objects/js-array-inl.h"
 #include "src/objects/js-atomics-synchronization.h"
 #include "src/objects/js-collection.h"
+#include "src/objects/js-composite.h"
 #include "src/objects/js-disposable-stack.h"
 #include "src/objects/js-generator-inl.h"
 #include "src/objects/js-iterator-helpers-inl.h"
@@ -2618,6 +2619,8 @@ int JSObject::GetHeaderSize(InstanceType type,
       return JSWrappedFunction::kHeaderSize;
     case JS_RAW_JSON_TYPE:
       return JSRawJson::kHeaderSize;
+    case JS_COMPOSITE_TYPE:
+      return JSComposite::kHeaderSize;
 #ifdef V8_INTL_SUPPORT
     case JS_V8_BREAK_ITERATOR_TYPE:
       return JSV8BreakIterator::kHeaderSize;

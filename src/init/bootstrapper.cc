@@ -45,6 +45,7 @@
 #include "src/objects/js-array-buffer-inl.h"
 #include "src/objects/js-array-inl.h"
 #include "src/objects/js-atomics-synchronization.h"
+#include "src/objects/js-composite.h"
 #include "src/objects/js-disposable-stack.h"
 #include "src/objects/js-iterator-helpers.h"
 #ifdef V8_INTL_SUPPORT
@@ -4582,6 +4583,25 @@ void Genesis::InitializeGlobal(DirectHandle<JSGlobalObject> global_object,
     CHECK_NE(prototype->map().ptr(),
              isolate_->initial_object_prototype()->map().ptr());
     prototype->map()->set_instance_type(JS_SET_PROTOTYPE_TYPE);
+  }
+
+  {  // -- C o m p o s i t e
+    DirectHandle<JSFunction> composite_fun = InstallFunction(
+        isolate_, global, "Composite",
+        JS_COMPOSITE_TYPE,
+        JSComposite::kHeaderSize,
+        0,  // in-object properties
+        factory->the_hole_value(),  // prototype is filled later
+        Builtin::kCompositeConstructor,
+        1,  // length property
+        kAdapt  // how arguments are passed
+    );
+
+    // Register it in the context for reuse
+    InstallWithIntrinsicDefaultProto(
+        isolate_, composite_fun,
+        Context::JS_COMPOSITE_FUNCTION_INDEX
+    );
   }
 
   {  // -- J S M o d u l e N a m e s p a c e
