@@ -51,6 +51,7 @@ class FreshlyAllocatedBigInt;
 class FunctionTemplateInfo;
 class Isolate;
 class JSArrayBufferView;
+class JSComposite;
 class JSDataView;
 class JSDisposableStackBase;
 class JSSyncDisposableStack;
@@ -741,6 +742,9 @@ class V8_EXPORT_PRIVATE Factory : public FactoryBase<Factory> {
   DirectHandle<JSSyncDisposableStack> NewJSSyncDisposableStack(
       DirectHandle<Map> map);
   DirectHandle<JSAsyncDisposableStack> NewJSAsyncDisposableStack(
+      DirectHandle<Map> map);
+
+  DirectHandle<JSComposite> NewJSComposite(
       DirectHandle<Map> map);
 
 #if V8_ENABLE_WEBASSEMBLY

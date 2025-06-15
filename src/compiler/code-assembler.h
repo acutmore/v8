@@ -50,6 +50,7 @@ class JSAsyncFunctionObject;
 class JSAsyncGeneratorObject;
 class JSCollator;
 class JSCollection;
+class JSComposite;
 class JSDateTimeFormat;
 class JSDisplayNames;
 class JSDurationFormat;

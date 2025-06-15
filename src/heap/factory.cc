@@ -60,6 +60,7 @@
 #include "src/objects/js-array-inl.h"
 #include "src/objects/js-atomics-synchronization-inl.h"
 #include "src/objects/js-collection-inl.h"
+#include "src/objects/js-composite-inl.h"
 #include "src/objects/js-disposable-stack-inl.h"
 #include "src/objects/js-generator-inl.h"
 #include "src/objects/js-objects.h"
@@ -3455,6 +3456,14 @@ DirectHandle<JSGeneratorObject> Factory::NewJSGeneratorObject(
          map->instance_type() == JS_ASYNC_GENERATOR_OBJECT_TYPE);
 
   return Cast<JSGeneratorObject>(NewJSObjectFromMap(map));
+}
+
+DirectHandle<JSComposite> Factory::NewJSComposite(
+    DirectHandle<Map> map) {
+  DirectHandle<JSComposite> composite(
+      Cast<JSComposite>(NewJSObjectFromMap(map)));
+  composite->set_hashcode(0);
+  return composite;
 }
 
 DirectHandle<JSDisposableStackBase> Factory::NewJSDisposableStackBase() {
