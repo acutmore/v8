@@ -2228,6 +2228,12 @@ void JSAtomicsCondition::JSAtomicsConditionPrint(std::ostream& os) {
   JSObjectPrintBody(os, *this);
 }
 
+
+void JSComposite::JSCompositePrint(std::ostream& os) {
+  JSObjectPrintHeader(os, *this, "JSComposite");
+  JSObjectPrintBody(os, *this);
+}
+
 std::ostream& operator<<(std::ostream& os, DisposableStackState state) {
   switch (state) {
     case DisposableStackState::kPending:

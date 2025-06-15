@@ -150,6 +150,7 @@ namespace internal {
   V(JSBoundFunction)                            \
   V(JSCollection)                               \
   V(JSCollectionIterator)                       \
+  V(JSComposite)                                \
   V(JSCustomElementsObject)                     \
   V(JSDataView)                                 \
   V(JSDataViewOrRabGsabDataView)                \
