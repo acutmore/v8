@@ -996,6 +996,7 @@ bool CanSubclassHaveInobjectProperties(InstanceType instance_type) {
     case JS_ARRAY_TYPE:
     case JS_ASYNC_FROM_SYNC_ITERATOR_TYPE:
     case JS_CONTEXT_EXTENSION_OBJECT_TYPE:
+    case JS_COMPOSITE_TYPE:
     case JS_DATA_VIEW_TYPE:
     case JS_RAB_GSAB_DATA_VIEW_TYPE:
     case JS_DATE_TYPE:
