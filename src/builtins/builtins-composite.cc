@@ -26,8 +26,7 @@ BUILTIN(CompositeConstructor) {
   }
 
   // 2. Let composite be ? OrdinaryCreateFromConstructor(NewTarget,
-  //    "%Composite.prototype%", « [[DisposableState]],
-  //    [[DisposeCapability]] »).
+  //    "%Composite.prototype%", « »).
   DirectHandle<Map> map;
   DirectHandle<JSFunction> target = args.target();
   DirectHandle<JSReceiver> new_target = Cast<JSReceiver>(args.new_target());
@@ -38,7 +37,10 @@ BUILTIN(CompositeConstructor) {
   DirectHandle<JSComposite> composite =
       isolate->factory()->NewJSComposite(map);
 
-  // 5. Return composite.
+  JSObject::SetIntegrityLevel(isolate, composite, FROZEN, kThrowOnError)
+      .ToChecked();
+
+  // 3. Return composite.
   return *composite;
 }
 
