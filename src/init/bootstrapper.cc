@@ -4565,18 +4565,19 @@ void Genesis::InitializeGlobal(DirectHandle<JSGlobalObject> global_object,
         isolate_, global, "Composite",
         JS_COMPOSITE_TYPE,
         JSComposite::kHeaderSize,
-        0,  // in-object properties
-        factory->the_hole_value(),  // prototype is filled later
+        0,
+        factory->the_hole_value(),
         Builtin::kCompositeConstructor,
-        1,  // length property
-        kAdapt  // how arguments are passed
+        1,
+        kAdapt
     );
-
-    // Register it in the context for reuse
     InstallWithIntrinsicDefaultProto(
         isolate_, composite_fun,
         Context::JS_COMPOSITE_FUNCTION_INDEX
     );
+
+    SimpleInstallFunction(isolate_, composite_fun, "isComposite",
+      Builtin::kCompositeIsComposite, 1, kAdapt);
   }
 
   {  // -- J S M o d u l e N a m e s p a c e

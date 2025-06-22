@@ -4,3 +4,13 @@
 extern class JSComposite extends JSObject {
   hashcode: int32;
 }
+
+transitioning javascript builtin CompositeIsComposite(
+    js-implicit context: NativeContext,
+    receiver: JSAny)(other: JSAny): Boolean {
+  if (Is<JSComposite>(other)) {
+    return True;
+  } else {
+    return False;
+  }
+}
