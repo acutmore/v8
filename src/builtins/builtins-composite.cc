@@ -9,6 +9,7 @@
 #include "src/objects/js-composite-inl.h"
 #include "src/objects/js-composite.h"
 #include "src/objects/js-function.h"
+#include "src/objects/property-descriptor.h"
 
 namespace v8 {
 namespace internal {
@@ -25,8 +26,33 @@ BUILTIN(CompositeConstructor) {
                                   kMethodName)));
   }
 
-  // 2. Let composite be ? OrdinaryCreateFromConstructor(NewTarget,
-  //    "%Composite.prototype%", « »).
+  DirectHandle<Object> input = args.atOrUndefined(isolate, 1);
+  if (!IsJSReceiver(*input)) {
+    THROW_NEW_ERROR_RETURN_FAILURE(
+        isolate, NewTypeError(MessageTemplate::kCalledOnNonObject,
+                              isolate->factory()->NewStringFromAsciiChecked(
+                                  kMethodName)));
+  }
+
+  DirectHandle<FixedArray> keys;
+  ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
+      isolate, keys,
+      KeyAccumulator::GetKeys(isolate, Cast<JSReceiver>(input),
+                              KeyCollectionMode::kOwnOnly,
+                              static_cast<PropertyFilter>(PropertyFilter::ONLY_ENUMERABLE |
+                                                        PropertyFilter::SKIP_SYMBOLS),
+                              GetKeysConversion::kConvertToString));
+
+  std::vector<DirectHandle<Name>> sorted_keys;
+  int length = keys->length();
+  sorted_keys.reserve(length);
+  for (int i = 0; i < length; ++i) {
+    DirectHandle<Name> key(Cast<Name>(keys->get(i)), isolate);
+    sorted_keys.push_back(key);
+  }
+  std::sort(sorted_keys.begin(), sorted_keys.end(),
+    [isolate](const DirectHandle<Name>& a, const DirectHandle<Name>& b) { return Name::CompareLessThan(isolate, a, b); });
+
   DirectHandle<Map> map;
   DirectHandle<JSFunction> target = args.target();
   DirectHandle<JSReceiver> new_target = Cast<JSReceiver>(args.new_target());
@@ -37,10 +63,29 @@ BUILTIN(CompositeConstructor) {
   DirectHandle<JSComposite> composite =
       isolate->factory()->NewJSComposite(map);
 
+  for (DirectHandle<Name> key : sorted_keys) {
+    DirectHandle<Object> value;
+    ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
+        isolate, value, JSReceiver::GetProperty(isolate, Cast<JSReceiver>(input), key));
+
+    PropertyDescriptor desc;
+    desc.set_value(Cast<JSAny>(value));
+    desc.set_writable(false);
+    desc.set_enumerable(true);
+    desc.set_configurable(false);
+    Maybe<bool> success = JSReceiver::DefineOwnProperty(
+        isolate, composite, key, &desc,
+        Just(kThrowOnError));
+    MAYBE_RETURN(success, ReadOnlyRoots(isolate).exception());
+    CHECK(success.FromJust());
+  }
+
   JSObject::SetIntegrityLevel(isolate, composite, FROZEN, kThrowOnError)
       .ToChecked();
 
-  // 3. Return composite.
+  // TODO hash
+  composite->set_hashcode(0);
+
   return *composite;
 }
 
