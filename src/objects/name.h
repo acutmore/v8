@@ -102,6 +102,8 @@ V8_OBJECT class Name : public PrimitiveHeapObject {
 
   static inline bool ContainsCachedArrayIndex(uint32_t hash);
 
+  static inline bool CompareLessThan(Isolate* isolate, DirectHandle<Name> a, DirectHandle<Name> b);
+
   // Return a string version of this name that is converted according to the
   // rules described in ES6 section 9.2.11.
   V8_WARN_UNUSED_RESULT static MaybeDirectHandle<String> ToFunctionName(
