@@ -291,6 +291,17 @@ bool Name::ContainsCachedArrayIndex(uint32_t raw_hash_field) {
   return (raw_hash_field & Name::kDoesNotContainCachedArrayIndexMask) == 0;
 }
 
+bool Name::CompareLessThan(Isolate* isolate, DirectHandle<Name> a, DirectHandle<Name> b) {
+  if (a.is_identical_to(b)) return false;
+
+  if (!IsString(*a) || !IsString(*b)) {
+    return IsString(*a); // Strings < Symbols
+  }
+
+  return String::Compare(isolate, Cast<String>(a),
+                         Cast<String>(b)) == ComparisonResult::kLessThan;
+}
+
 }  // namespace internal
 }  // namespace v8
 
