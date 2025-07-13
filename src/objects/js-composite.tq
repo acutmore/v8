@@ -2,7 +2,7 @@
 #include 'src/objects/js-composite.h'
 
 extern class JSComposite extends JSObject {
-  hashcode: int32;
+  hashcode: uint32;
 }
 
 transitioning javascript builtin CompositeIsComposite(

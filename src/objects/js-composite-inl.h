@@ -17,10 +17,10 @@ namespace internal {
 
 TQ_OBJECT_CONSTRUCTORS_IMPL(JSComposite)
 
-inline int32_t JSComposite::hashcode() const {
+inline uint32_t JSComposite::hashcode() const {
   return RELAXED_READ_INT32_FIELD(*this, kHashcodeOffset);
 }
-inline void JSComposite::set_hashcode(int32_t value) {
+inline void JSComposite::set_hashcode(uint32_t value) {
   RELAXED_WRITE_INT32_FIELD(*this, kHashcodeOffset, value);
 }
 

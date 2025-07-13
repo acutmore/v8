@@ -15,8 +15,8 @@ namespace internal {
 
 class JSComposite : public TorqueGeneratedJSComposite<JSComposite, JSObject> {
  public:
-  inline int32_t hashcode() const;
-  inline void set_hashcode(int32_t value);
+  inline uint32_t hashcode() const;
+  inline void set_hashcode(uint32_t value);
   DECL_PRINTER(JSComposite)
   EXPORT_DECL_VERIFIER(JSComposite)
 
