@@ -63,10 +63,19 @@ BUILTIN(CompositeConstructor) {
   DirectHandle<JSComposite> composite =
       isolate->factory()->NewJSComposite(map);
 
+  uint32_t hashcode = 0;
   for (DirectHandle<Name> key : sorted_keys) {
     DirectHandle<Object> value;
     ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
         isolate, value, JSReceiver::GetProperty(isolate, Cast<JSReceiver>(input), key));
+
+    hashcode ^= key->hash();
+    if (IsJSComposite(*value)) {
+      DirectHandle<JSComposite> composite(Cast<JSComposite>(*value), isolate);
+      hashcode ^= composite->hashcode();
+    } else {
+      hashcode ^= Smi::ToInt(Object::GetHash(*value));
+    }
 
     PropertyDescriptor desc;
     desc.set_value(Cast<JSAny>(value));
@@ -84,8 +93,7 @@ BUILTIN(CompositeConstructor) {
       isolate, composite, kDontThrow);
   MAYBE_RETURN(result, ReadOnlyRoots(isolate).exception());
 
-  // TODO hash
-  composite->set_hashcode(0);
+  composite->set_hashcode(hashcode);
 
   return *composite;
 }
