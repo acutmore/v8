@@ -80,8 +80,9 @@ BUILTIN(CompositeConstructor) {
     CHECK(success.FromJust());
   }
 
-  JSObject::SetIntegrityLevel(isolate, composite, FROZEN, kThrowOnError)
-      .ToChecked();
+  Maybe<bool> result = JSReceiver::PreventExtensions(
+      isolate, composite, kDontThrow);
+  MAYBE_RETURN(result, ReadOnlyRoots(isolate).exception());
 
   // TODO hash
   composite->set_hashcode(0);
