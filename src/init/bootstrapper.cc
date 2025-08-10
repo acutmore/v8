@@ -4603,6 +4603,9 @@ void Genesis::InitializeGlobal(DirectHandle<JSGlobalObject> global_object,
 
     SimpleInstallFunction(isolate_, composite_fun, "isComposite",
       Builtin::kCompositeIsComposite, 1, kAdapt);
+
+    SimpleInstallFunction(isolate_, composite_fun, "equal",
+      Builtin::kCompositeEqual, 2, kAdapt);
   }
 
   {  // -- J S M o d u l e N a m e s p a c e

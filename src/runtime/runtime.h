@@ -346,6 +346,7 @@ constexpr bool CanTriggerGC(T... properties) {
   F(AddPrivateBrand, 4, 1)                                             \
   F(AllocateHeapNumber, 0, 1)                                          \
   F(CompleteInobjectSlackTrackingForMap, 1, 1)                         \
+  F(CompositeEqualHelper, 2, 1)                                        \
   I(CopyDataProperties, 2, 1)                                          \
   I(CopyDataPropertiesWithExcludedPropertiesOnStack, -1 /* >= 1 */, 1) \
   I(CreateDataProperty, 3, 1)                                          \
