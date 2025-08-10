@@ -128,20 +128,29 @@ namespace {
 Tagged<Object> CompareComposites(Isolate* isolate,
                                  DirectHandle<JSComposite> ac,
                                  DirectHandle<JSComposite> bc) {
-  DCHECK_EQ(ac->map(), bc->map());
+  if (ac.is_identical_to(bc)) {
+    return ReadOnlyRoots(isolate).true_value();
+  }
 
-  Tagged<Map> map = ac->map();
-  Tagged<DescriptorArray> descriptors = map->instance_descriptors();
+  Tagged<Map> a_map = ac->map();
+  Tagged<Map> b_map = bc->map();
+
+  // If maps are different, the composites have different structure
+  if (a_map != b_map) {
+    return ReadOnlyRoots(isolate).false_value();
+  }
+
+  Tagged<DescriptorArray> descriptors = a_map->instance_descriptors();
 
   // Iterate through all own descriptors and compare property values
-  for (InternalIndex i : map->IterateOwnDescriptors()) {
+  for (InternalIndex i : a_map->IterateOwnDescriptors()) {
     PropertyDetails details = descriptors->GetDetails(i);
 
     // Composites should only have data properties
     if (details.location() == PropertyLocation::kField &&
         details.kind() == PropertyKind::kData) {
 
-      FieldIndex field_index = FieldIndex::ForDetails(map, details);
+      FieldIndex field_index = FieldIndex::ForDetails(a_map, details);
       Tagged<Object> av = ac->RawFastPropertyAt(field_index);
       Tagged<Object> bv = bc->RawFastPropertyAt(field_index);
 
