@@ -62,6 +62,35 @@ macro FastArrayLastIndexOf<Elements : type extends FixedArrayBase>(
   return -1;
 }
 
+transitioning macro FastArrayLastIndexOfComposite<Elements : type extends FixedArrayBase>(
+    context: NativeContext, array: JSArray, from: Smi, searchComposite: JSComposite): Smi {
+  const elements: FixedArrayBase = array.elements;
+  let k: Smi = from;
+
+  // see comment in `FastArrayLastIndexOf`
+  if (k >= elements.length) {
+    k = elements.length - 1;
+  }
+
+  while (k >= 0) {
+    try {
+      const element: JSAny = LoadWithHoleCheck<Elements>(elements, k)
+          otherwise Hole;
+
+      const same: Boolean = CompositeEqual(searchComposite, element);
+      if (same == True) {
+        dcheck(Is<FastJSArray>(array));
+        return k;
+      }
+    } label Hole {}  // Do nothing for holes.
+
+    --k;
+  }
+
+  dcheck(Is<FastJSArray>(array));
+  return -1;
+}
+
 transitioning macro GetFromIndex(
     context: Context, length: Number, arguments: Arguments): Number {
   // 4. If fromIndex is present, let n be ? ToInteger(fromIndex);
@@ -101,6 +130,25 @@ macro TryFastArrayLastIndexOf(
       context, array, fromSmi, searchElement);
 }
 
+transitioning macro TryFastArrayLastIndexOfComposite(
+    context: NativeContext, receiver: JSReceiver, searchComposite: JSComposite,
+    from: Number): JSAny
+    labels Slow {
+  const array: FastJSArray = Cast<FastJSArray>(receiver) otherwise Slow;
+  const length: Smi = array.length;
+  if (length == 0) return SmiConstant(-1);
+
+  const fromSmi: Smi = Cast<Smi>(from) otherwise Slow;
+  const kind: ElementsKind = array.map.elements_kind;
+  if (IsFastSmiOrTaggedElementsKind(kind)) {
+    return FastArrayLastIndexOfComposite<FixedArray>(
+        context, array, fromSmi, searchComposite);
+  }
+  dcheck(IsDoubleElementsKind(kind));
+  return FastArrayLastIndexOfComposite<FixedDoubleArray>(
+      context, array, fromSmi, searchComposite);
+}
+
 transitioning macro GenericArrayLastIndexOf(
     context: Context, object: JSReceiver, searchElement: JSAny,
     from: Number): JSAny {
@@ -132,6 +180,26 @@ transitioning macro GenericArrayLastIndexOf(
   return SmiConstant(-1);
 }
 
+transitioning macro GenericArrayLastIndexOfComposite(
+    context: NativeContext, object: JSReceiver, searchComposite: JSComposite,
+    from: Number): JSAny {
+  let k: Number = from;
+
+  while (k >= 0) {
+    const kPresent: Boolean = HasProperty(object, k);
+
+    if (kPresent == True) {
+      const element: JSAny = GetProperty(object, k);
+      const same: Boolean = CompositeEqual(searchComposite, element);
+      if (same == True) return k;
+    }
+
+    --k;
+  }
+
+  return SmiConstant(-1);
+}
+
 // https://tc39.github.io/ecma262/#sec-array.prototype.lastIndexOf
 transitioning javascript builtin ArrayPrototypeLastIndexOf(
     js-implicit context: NativeContext, receiver: JSAny)(...arguments): JSAny {
@@ -149,11 +217,22 @@ transitioning javascript builtin ArrayPrototypeLastIndexOf(
 
   const searchElement: JSAny = arguments[0];
 
-  try {
-    return TryFastArrayLastIndexOf(context, object, searchElement, from)
-        otherwise Baseline;
-  } label Baseline {
-    return GenericArrayLastIndexOf(context, object, searchElement, from);
+  // Check once if searchElement is a Composite to choose the optimal path
+  if (Is<JSComposite>(searchElement)) {
+    const searchComposite = UnsafeCast<JSComposite>(searchElement);
+    try {
+      return TryFastArrayLastIndexOfComposite(context, object, searchComposite, from)
+          otherwise Baseline;
+    } label Baseline {
+      return GenericArrayLastIndexOfComposite(context, object, searchComposite, from);
+    }
+  } else {
+    try {
+      return TryFastArrayLastIndexOf(context, object, searchElement, from)
+          otherwise Baseline;
+    } label Baseline {
+      return GenericArrayLastIndexOf(context, object, searchElement, from);
+    }
   }
 }
 }

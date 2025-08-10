@@ -39,3 +39,13 @@ transitioning javascript builtin CompositeEqual(
   }
   return CompositeEqualHelper(kNoContext, ac, bc);
 }
+
+transitioning macro CompositeEqual(
+    searchComposite: JSComposite, element: JSAny): Boolean {
+  if (Is<JSComposite>(element)) {
+    const elementComposite = UnsafeCast<JSComposite>(element);
+    return CompositeEqualHelper(kNoContext, searchComposite, elementComposite);
+  } else {
+    return False;
+  }
+}
