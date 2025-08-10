@@ -1,4 +1,3 @@
-
 #include 'src/objects/js-composite.h'
 
 extern class JSComposite extends JSObject {
