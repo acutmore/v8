@@ -142,8 +142,17 @@ Tagged<Object> CompareComposites(Isolate* isolate,
       Tagged<Object> bv = bc->RawFastPropertyAt(field_index);
 
       // For now just use strict equality comparison for property values
-      if (!Object::StrictEquals(av, bv)) {
-        return ReadOnlyRoots(isolate).false_value();
+      if (IsJSComposite(av) && IsJSComposite(bv)) {
+        // Recursively compare composites
+        if (CompareComposites(isolate,
+              DirectHandle<JSComposite>(Cast<JSComposite>(av), isolate),
+              DirectHandle<JSComposite>(Cast<JSComposite>(bv), isolate)) != ReadOnlyRoots(isolate).true_value()) {
+          return ReadOnlyRoots(isolate).false_value();
+        }
+      } else {
+        if (!Object::StrictEquals(av, bv)) {
+          return ReadOnlyRoots(isolate).false_value();
+        }
       }
     }
   }
