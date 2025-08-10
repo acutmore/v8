@@ -14,3 +14,43 @@ transitioning javascript builtin CompositeIsComposite(
     return False;
   }
 }
+
+extern transitioning runtime CompositeEqualHelper(
+    NoContext, JSComposite, JSComposite): Boolean;
+
+transitioning javascript builtin CompositeEqual(
+    js-implicit context: NativeContext,
+    receiver: JSAny)(a: JSAny, b: JSAny): Boolean {
+  if (!Is<JSComposite>(a)) {
+    return False;
+  }
+  if (!Is<JSComposite>(b)) {
+    return False;
+  }
+  const ac = UnsafeCast<(JSComposite)>(a);
+  const bc = UnsafeCast<(JSComposite)>(b);
+  if (ac.hashcode != bc.hashcode) {
+    return False;
+  }
+  if (ac.map != bc.map) {
+    return False;
+  }
+  if (ac.elements.length != bc.elements.length) {
+    return False;
+  }
+
+  const length = ac.elements.length;
+  const ae: FixedArray = UnsafeCast<FixedArray>(ac.elements);
+  const be: FixedArray = UnsafeCast<FixedArray>(bc.elements);
+  for (let k: Smi = 0; k < length; k++) {
+    const ak = UnsafeCast<JSAny>(ae.objects[k]);
+    const bk = UnsafeCast<JSAny>(be.objects[k]);
+    if (!StrictEqual(ak, bk)) {
+      return False;
+    }
+  }
+
+  // Compare properties: since ac.map == bc.map, both objects have identical
+  // property layouts, so we can iterate through descriptors and compare values
+  return CompositeEqualHelper(kNoContext, ac, bc);
+}

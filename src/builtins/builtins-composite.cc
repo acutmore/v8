@@ -1,4 +1,3 @@
-
 #include "src/builtins/builtins-utils-inl.h"
 #include "src/builtins/builtins.h"
 #include "src/common/globals.h"
@@ -10,6 +9,11 @@
 #include "src/objects/js-composite.h"
 #include "src/objects/js-function.h"
 #include "src/objects/property-descriptor.h"
+#include "src/objects/field-index-inl.h"
+#include "src/objects/descriptor-array-inl.h"
+#include "src/objects/map-inl.h"
+#include "src/objects/objects-inl.h"
+#include "src/runtime/runtime.h"
 
 namespace v8 {
 namespace internal {
@@ -66,8 +70,14 @@ BUILTIN(CompositeConstructor) {
   uint32_t hashcode = 0;
   for (DirectHandle<Name> key : sorted_keys) {
     DirectHandle<Object> value;
-    ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
-        isolate, value, JSReceiver::GetProperty(isolate, Cast<JSReceiver>(input), key));
+    size_t index;
+    if (key->AsIntegerIndex(&index)) {
+      ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
+          isolate, value, JSReceiver::GetElement(isolate, Cast<JSReceiver>(input), static_cast<uint32_t>(index)));
+    } else {
+      ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
+          isolate, value, JSReceiver::GetProperty(isolate, Cast<JSReceiver>(input), key));
+    }
 
     hashcode ^= key->hash();
     if (IsJSComposite(*value)) {
@@ -77,16 +87,26 @@ BUILTIN(CompositeConstructor) {
       hashcode ^= Smi::ToInt(Object::GetHash(*value));
     }
 
-    PropertyDescriptor desc;
-    desc.set_value(Cast<JSAny>(value));
-    desc.set_writable(false);
-    desc.set_enumerable(true);
-    desc.set_configurable(false);
-    Maybe<bool> success = JSReceiver::DefineOwnProperty(
-        isolate, composite, key, &desc,
-        Just(kThrowOnError));
-    MAYBE_RETURN(success, ReadOnlyRoots(isolate).exception());
-    CHECK(success.FromJust());
+    if (key->AsIntegerIndex(&index)) {
+      MaybeDirectHandle<Object> set_result = JSObject::SetOwnElementIgnoreAttributes(
+          composite, static_cast<uint32_t>(index), value,
+          static_cast<PropertyAttributes>(READ_ONLY | DONT_DELETE));
+      if (set_result.is_null()) {
+        return ReadOnlyRoots(isolate).exception();
+      }
+    } else {
+      PropertyDescriptor desc;
+      desc.set_value(Cast<JSAny>(value));
+      desc.set_writable(false);
+      desc.set_enumerable(true);
+      desc.set_configurable(false);
+
+      Maybe<bool> success = JSReceiver::DefineOwnProperty(
+          isolate, composite, key, &desc,
+          Just(kThrowOnError));
+      MAYBE_RETURN(success, ReadOnlyRoots(isolate).exception());
+      CHECK(success.FromJust());
+    }
   }
 
   Maybe<bool> result = JSReceiver::PreventExtensions(
@@ -96,6 +116,63 @@ BUILTIN(CompositeConstructor) {
   composite->set_hashcode(hashcode);
 
   return *composite;
+}
+
+namespace {
+
+// Helper function to compare two JSComposite objects for equality
+Tagged<Object> CompareComposites(Isolate* isolate,
+                                 DirectHandle<JSComposite> ac,
+                                 DirectHandle<JSComposite> bc) {
+  DCHECK_EQ(ac->map(), bc->map());
+
+  Tagged<Map> map = ac->map();
+  Tagged<DescriptorArray> descriptors = map->instance_descriptors();
+
+  // Iterate through all own descriptors and compare property values
+  for (InternalIndex i : map->IterateOwnDescriptors()) {
+    PropertyDetails details = descriptors->GetDetails(i);
+
+    // Composites should only have data properties
+    if (details.location() == PropertyLocation::kField &&
+        details.kind() == PropertyKind::kData) {
+
+      FieldIndex field_index = FieldIndex::ForDetails(map, details);
+      Tagged<Object> av = ac->RawFastPropertyAt(field_index);
+      Tagged<Object> bv = bc->RawFastPropertyAt(field_index);
+
+      // For now just use strict equality comparison for property values
+      if (!Object::StrictEquals(av, bv)) {
+        return ReadOnlyRoots(isolate).false_value();
+      }
+    }
+  }
+
+  return ReadOnlyRoots(isolate).true_value();
+}
+
+}  // namespace
+
+RUNTIME_FUNCTION(Runtime_CompositeEqualHelper) {
+  HandleScope scope(isolate);
+  DCHECK_EQ(2, args.length());
+
+  DirectHandle<JSComposite> ac = args.at<JSComposite>(0);
+  DirectHandle<JSComposite> bc = args.at<JSComposite>(1);
+
+  return CompareComposites(isolate, ac, bc);
+}
+
+BUILTIN(CompositeEqualHelper) {
+  HandleScope scope(isolate);
+  DCHECK_EQ(3, args.length());
+
+  // Get arguments directly from args
+  DirectHandle<Context> context = args.at<Context>(0);
+  DirectHandle<JSComposite> ac = args.at<JSComposite>(1);
+  DirectHandle<JSComposite> bc = args.at<JSComposite>(2);
+
+  return CompareComposites(isolate, ac, bc);
 }
 
 }  // namespace internal

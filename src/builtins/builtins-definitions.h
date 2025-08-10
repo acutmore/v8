@@ -616,6 +616,7 @@ constexpr int kGearboxGenericBuiltinIdOffset = -2;
                                                                                \
   /* Composite */                                                              \
   CPP(CompositeConstructor, JSParameterCount(1))                               \
+  CPP(CompositeEqualHelper, kDontAdaptArgumentsSentinel)                       \
                                                                                \
   /* DataView */                                                               \
   /* ES #sec-dataview-constructor */                                           \
