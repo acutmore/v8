@@ -14,6 +14,7 @@
 #include "src/objects/map-inl.h"
 #include "src/objects/objects-inl.h"
 #include "src/runtime/runtime.h"
+#include "src/base/hashing.h"
 
 namespace v8 {
 namespace internal {
@@ -67,7 +68,8 @@ BUILTIN(CompositeConstructor) {
   DirectHandle<JSComposite> composite =
       isolate->factory()->NewJSComposite(map);
 
-  uint32_t hashcode = 0;
+  base::Hasher hasher(0x9E3779B9);  // Golden ratio constant as seed
+
   for (DirectHandle<Name> key : sorted_keys) {
     DirectHandle<Object> value;
     size_t index;
@@ -83,12 +85,13 @@ BUILTIN(CompositeConstructor) {
       value = handle(Smi::FromInt(0), isolate);
     }
 
-    hashcode ^= key->hash();
+    hasher.AddHash(key->hash());
+
     if (IsJSComposite(*value)) {
-      DirectHandle<JSComposite> composite(Cast<JSComposite>(*value), isolate);
-      hashcode ^= composite->hashcode();
+      DirectHandle<JSComposite> nested_composite(Cast<JSComposite>(*value), isolate);
+      hasher.AddHash(nested_composite->hashcode());
     } else {
-      hashcode ^= Smi::ToInt(Object::GetHash(*value));
+      hasher.AddHash(Smi::ToInt(Object::GetHash(*value)));
     }
 
     if (key->AsIntegerIndex(&index)) {
@@ -116,6 +119,8 @@ BUILTIN(CompositeConstructor) {
   Maybe<bool> result = JSReceiver::PreventExtensions(
       isolate, composite, kDontThrow);
   MAYBE_RETURN(result, ReadOnlyRoots(isolate).exception());
+
+  uint32_t hashcode = static_cast<uint32_t>(hasher.hash());
 
   // Ensure composites have a non-zero hash
   // because the 'zero' hash has a special semantics within Map+Set logic
