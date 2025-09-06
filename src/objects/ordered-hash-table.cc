@@ -8,9 +8,12 @@
 #include "src/heap/heap-inl.h"
 #include "src/objects/internal-index.h"
 #include "src/objects/js-collection-inl.h"
+#include "src/objects/js-composite-inl.h"
+#include "src/objects/js-composite.h"
 #include "src/objects/objects-inl.h"
 #include "src/objects/ordered-hash-table-inl.h"
 #include "src/roots/roots.h"
+#include "src/runtime/runtime.h"
 
 namespace v8 {
 namespace internal {
@@ -153,6 +156,7 @@ InternalIndex OrderedHashTable<Derived, entrysize>::FindEntry(
     return InternalIndex::NotFound();
   }
 
+  bool key_is_composite = false;
   int raw_entry;
   // This special cases for Smi, so that we avoid the HandleScope
   // creation below.
@@ -161,7 +165,15 @@ InternalIndex OrderedHashTable<Derived, entrysize>::FindEntry(
     raw_entry = HashToEntryRaw(hash & Smi::kMaxValue);
   } else {
     HandleScope scope(isolate);
-    Tagged<Object> hash = Object::GetHash(key);
+    Tagged<Object> hash;
+
+    if (IsJSComposite(key)) {
+      key_is_composite = true;
+      hash = Cast<JSComposite>(key)->hashcode();
+    } else {
+      hash = Object::GetHash(key);
+    }
+
     // If the object does not have an identity hash, it was never used as a key
     if (IsUndefined(hash, isolate)) return InternalIndex::NotFound();
     raw_entry = HashToEntryRaw(Smi::ToInt(hash));
@@ -170,8 +182,27 @@ InternalIndex OrderedHashTable<Derived, entrysize>::FindEntry(
   // Walk the chain in the bucket to find the key.
   while (raw_entry != kNotFound) {
     Tagged<Object> candidate_key = KeyAt(InternalIndex(raw_entry));
-    if (Object::SameValueZero(candidate_key, key))
-      return InternalIndex(raw_entry);
+
+    bool keys_equal;
+    bool composite_equality = key_is_composite && IsJSComposite(candidate_key);
+    if (!composite_equality) {
+      keys_equal = Object::SameValueZero(candidate_key, key);
+    } else {
+      Tagged<JSComposite> candidate_composite = Cast<JSComposite>(candidate_key);
+      Tagged<JSComposite> key_composite = Cast<JSComposite>(key);
+
+      if (candidate_composite->hashcode() != key_composite->hashcode()) {
+        keys_equal = false;
+      } else {
+        AllowGarbageCollection allow_gc;
+        DirectHandle<JSComposite> candidate_handle(candidate_composite, isolate);
+        DirectHandle<JSComposite> key_handle(key_composite, isolate);
+        Tagged<Object> result = CompareComposites(isolate, candidate_handle, key_handle);
+        keys_equal = IsTrue(result, isolate);
+      }
+    }
+
+    if (keys_equal) return InternalIndex(raw_entry);
     raw_entry = NextChainEntryRaw(raw_entry);
   }
 
@@ -189,15 +220,41 @@ HandleType<OrderedHashSet>::MaybeType OrderedHashSet::Add(
     DisallowGarbageCollection no_gc;
     Tagged<Object> raw_key = *key;
     Tagged<OrderedHashSet> raw_table = *table;
-    hash = Object::GetOrCreateHash(raw_key, isolate).value();
+
+    bool key_is_composite = IsJSComposite(raw_key);
+    if (key_is_composite) {
+      hash = Smi::ToInt(Cast<JSComposite>(raw_key)->hashcode());
+    } else {
+      hash = Object::GetOrCreateHash(raw_key, isolate).value();
+    }
+
     if (raw_table->NumberOfElements() > 0) {
       int raw_entry = raw_table->HashToEntryRaw(hash);
       // Walk the chain of the bucket and try finding the key.
       while (raw_entry != kNotFound) {
         Tagged<Object> candidate_key =
             raw_table->KeyAt(InternalIndex(raw_entry));
-        // Do not add if we have the key already
-        if (Object::SameValueZero(candidate_key, raw_key)) return table;
+
+        bool keys_equal;
+        bool composite_equality = key_is_composite && IsJSComposite(candidate_key);
+        if (!composite_equality) {
+          keys_equal = Object::SameValueZero(candidate_key, raw_key);
+        } else {
+          Tagged<JSComposite> candidate_composite = Cast<JSComposite>(candidate_key);
+          Tagged<JSComposite> key_composite = Cast<JSComposite>(raw_key);
+
+          if (candidate_composite->hashcode() != key_composite->hashcode()) {
+            keys_equal = false;
+          } else {
+            AllowGarbageCollection allow_gc;
+            DirectHandle<JSComposite> candidate_handle(candidate_composite, isolate);
+            DirectHandle<JSComposite> key_handle(key_composite, isolate);
+            Tagged<Object> result = CompareComposites(isolate, candidate_handle, key_handle);
+            keys_equal = IsTrue(result, isolate);
+          }
+        }
+
+        if (keys_equal) return table;
         raw_entry = raw_table->NextChainEntryRaw(raw_entry);
       }
     }
@@ -457,10 +514,29 @@ MaybeHandle<OrderedHashMap> OrderedHashMap::Add(Isolate* isolate,
     {
       DisallowGarbageCollection no_gc;
       Tagged<Object> raw_key = *key;
+      bool key_is_composite = IsJSComposite(raw_key);
       while (raw_entry != kNotFound) {
         Tagged<Object> candidate_key = table->KeyAt(InternalIndex(raw_entry));
+
         // Do not add if we have the key already
-        if (Object::SameValueZero(candidate_key, raw_key)) return table;
+        bool keys_equal = false;
+        bool composite_equality = key_is_composite && IsJSComposite(candidate_key);
+        if (composite_equality) {
+          Tagged<JSComposite> candidate_composite = Cast<JSComposite>(candidate_key);
+          Tagged<JSComposite> key_composite = Cast<JSComposite>(raw_key);
+
+          if (candidate_composite->hashcode() == key_composite->hashcode()) {
+            AllowGarbageCollection allow_gc;
+            DirectHandle<JSComposite> candidate_handle(candidate_composite, isolate);
+            DirectHandle<JSComposite> key_handle(key_composite, isolate);
+            Tagged<Object> result = CompareComposites(isolate, candidate_handle, key_handle);
+            keys_equal = IsTrue(result, isolate);
+          }
+        } else {
+          keys_equal = Object::SameValueZero(candidate_key, raw_key);
+        }
+
+        if (keys_equal) return table;
         raw_entry = table->NextChainEntryRaw(raw_entry);
       }
     }
@@ -734,7 +810,14 @@ MaybeHandle<SmallOrderedHashSet> SmallOrderedHashSet::Add(
 
   DisallowGarbageCollection no_gc;
   Tagged<SmallOrderedHashSet> raw_table = *table;
-  int hash = Object::GetOrCreateHash(*key, isolate).value();
+
+  int hash;
+  if (IsJSComposite(*key)) {
+    hash = Smi::ToInt(Cast<JSComposite>(*key)->hashcode());
+  } else {
+    hash = Object::GetOrCreateHash(*key, isolate).value();
+  }
+
   int nof = raw_table->NumberOfElements();
 
   // Read the existing bucket values.
@@ -1037,7 +1120,14 @@ template <class Derived>
 InternalIndex SmallOrderedHashTable<Derived>::FindEntry(Isolate* isolate,
                                                         Tagged<Object> key) {
   DisallowGarbageCollection no_gc;
-  Tagged<Object> hash = Object::GetHash(key);
+  Tagged<Object> hash;
+
+  bool key_is_composite = IsJSComposite(key);
+  if (key_is_composite) {
+    hash = Cast<JSComposite>(key)->hashcode();
+  } else {
+    hash = Object::GetHash(key);
+  }
 
   if (IsUndefined(hash, isolate)) return InternalIndex::NotFound();
   int raw_entry = HashToFirstEntry(Smi::ToInt(hash));
@@ -1046,7 +1136,27 @@ InternalIndex SmallOrderedHashTable<Derived>::FindEntry(Isolate* isolate,
   while (raw_entry != kNotFound) {
     InternalIndex entry(raw_entry);
     Tagged<Object> candidate_key = KeyAt(entry);
-    if (Object::SameValueZero(candidate_key, key)) return entry;
+
+    bool keys_equal;
+    bool composite_equality = key_is_composite && IsJSComposite(candidate_key);
+    if (!composite_equality) {
+      keys_equal = Object::SameValueZero(candidate_key, key);
+    } else {
+      Tagged<JSComposite> candidate_composite = Cast<JSComposite>(candidate_key);
+      Tagged<JSComposite> key_composite = Cast<JSComposite>(key);
+
+      if (candidate_composite->hashcode() != key_composite->hashcode()) {
+        keys_equal = false;
+      } else {
+        AllowGarbageCollection allow_gc;
+        DirectHandle<JSComposite> candidate_handle(candidate_composite, isolate);
+        DirectHandle<JSComposite> key_handle(key_composite, isolate);
+        Tagged<Object> result = CompareComposites(isolate, candidate_handle, key_handle);
+        keys_equal = IsTrue(result, isolate);
+      }
+    }
+
+    if (keys_equal) return entry;
     raw_entry = GetNextEntry(raw_entry);
   }
   return InternalIndex::NotFound();
