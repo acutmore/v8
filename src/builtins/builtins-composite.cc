@@ -6,15 +6,21 @@
 #include "src/objects/contexts.h"
 #include "src/objects/heap-object.h"
 #include "src/objects/js-composite-inl.h"
+#include "src/execution/isolate.h"
+#include "src/handles/handles.h"
+#include "src/objects/objects-inl.h"
 #include "src/objects/js-composite.h"
+#include "src/objects/smi.h"
+#include "src/objects/string.h"
+#include "src/objects/heap-number.h"
+#include "src/objects/bigint.h"
+#include "src/objects/js-objects.h"
 #include "src/objects/js-function.h"
 #include "src/objects/property-descriptor.h"
 #include "src/objects/field-index-inl.h"
 #include "src/objects/descriptor-array-inl.h"
 #include "src/objects/map-inl.h"
-#include "src/objects/objects-inl.h"
 #include "src/runtime/runtime.h"
-#include "src/base/hashing.h"
 
 namespace v8 {
 namespace internal {
@@ -89,9 +95,12 @@ BUILTIN(CompositeConstructor) {
 
     if (IsJSComposite(*value)) {
       DirectHandle<JSComposite> nested_composite(Cast<JSComposite>(*value), isolate);
-      hasher.AddHash(nested_composite->hashcode());
+      Tagged<Smi> nested_hash = nested_composite->hashcode();
+      hasher.AddHash(static_cast<uint32_t>(Smi::ToInt(nested_hash)));
     } else {
-      hasher.AddHash(Smi::ToInt(Object::GetHash(*value)));
+      Tagged<Smi> hash_smi = Object::GetOrCreateHash(*value, isolate);
+      uint32_t value_hash = static_cast<uint32_t>(Smi::ToInt(hash_smi));
+      hasher.AddHash(value_hash);
     }
 
     if (key->AsIntegerIndex(&index)) {
@@ -132,8 +141,6 @@ BUILTIN(CompositeConstructor) {
 
   return *composite;
 }
-
-namespace {
 
 // Helper function to compare two JSComposite objects for equality
 Tagged<Object> CompareComposites(Isolate* isolate,
@@ -181,8 +188,6 @@ Tagged<Object> CompareComposites(Isolate* isolate,
 
   return ReadOnlyRoots(isolate).true_value();
 }
-
-}  // namespace
 
 RUNTIME_FUNCTION(Runtime_CompositeEqualHelper) {
   HandleScope scope(isolate);

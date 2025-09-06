@@ -36,6 +36,7 @@
 #include "src/objects/heap-object.h"
 #include "src/objects/hole.h"
 #include "src/objects/instance-type-checker.h"
+#include "src/objects/js-composite-inl.h"
 #include "src/objects/js-proxy-inl.h"  // TODO(jkummerow): Drop.
 #include "src/objects/keys.h"
 #include "src/objects/literal-objects.h"
@@ -2055,6 +2056,9 @@ Tagged<Object> Object::GetSimpleHash(Tagged<Object> object) {
     uint32_t hash = Cast<TemplateInfo>(object)->GetHash();
     DCHECK_EQ(hash, hash & Smi::kMaxValue);
     return Smi::FromInt(hash);
+  } else if (instance_type == JS_COMPOSITE_TYPE) {
+    Tagged<JSComposite> composite = Cast<JSComposite>(object);
+    return composite->hashcode();
   }
 
   DCHECK_NE(instance_type, HOLE_TYPE);

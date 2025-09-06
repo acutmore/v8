@@ -1239,7 +1239,8 @@ template <typename CollectionType>
 void CollectionsBuiltinsAssembler::FindOrderedHashTableEntryForCompositeKey(
     TNode<CollectionType> table, TNode<JSComposite> key_composite,
     TVariable<IntPtrT>* result, Label* entry_found, Label* not_found) {
-  const TNode<Uint32T> hash = LoadObjectField<Uint32T>(key_composite, JSComposite::kHashcodeOffset);
+  const TNode<Smi> hash_smi = LoadObjectField<Smi>(key_composite, JSComposite::kHashcodeOffset);
+  const TNode<Uint32T> hash = Unsigned(SmiToInt32(hash_smi));
   *result = Signed(ChangeUint32ToWord(hash));
   FindOrderedHashTableEntry<CollectionType>(
       table, hash,
@@ -1319,9 +1320,9 @@ void CollectionsBuiltinsAssembler::SameValueZeroComposite(
 
   TNode<JSComposite> candidate_composite = CAST(candidate_key);
 
-  TNode<Uint32T> key_hash = LoadObjectField<Uint32T>(key_composite, JSComposite::kHashcodeOffset);
-  TNode<Uint32T> candidate_hash = LoadObjectField<Uint32T>(candidate_composite, JSComposite::kHashcodeOffset);
-  GotoIfNot(Word32Equal(key_hash, candidate_hash), if_not_same);
+  TNode<Smi> key_hash = LoadObjectField<Smi>(key_composite, JSComposite::kHashcodeOffset);
+  TNode<Smi> candidate_hash = LoadObjectField<Smi>(candidate_composite, JSComposite::kHashcodeOffset);
+  GotoIfNot(TaggedEqual(key_hash, candidate_hash), if_not_same);
 
   TNode<Boolean> result = CAST(CallRuntime(Runtime::kCompositeEqualHelper, NoContextConstant(),
                                           key_composite, candidate_composite));

@@ -15,7 +15,8 @@ namespace internal {
 
 class JSComposite : public TorqueGeneratedJSComposite<JSComposite, JSObject> {
  public:
-  inline uint32_t hashcode() const;
+  inline Tagged<Smi> hashcode() const;
+  inline void set_hashcode(Tagged<Smi> value);
   inline void set_hashcode(uint32_t value);
   DECL_PRINTER(JSComposite)
   EXPORT_DECL_VERIFIER(JSComposite)
@@ -24,6 +25,11 @@ class JSComposite : public TorqueGeneratedJSComposite<JSComposite, JSObject> {
 
   TQ_OBJECT_CONSTRUCTORS(JSComposite)
 };
+
+// TODO(AC): return a boolean
+Tagged<Object> CompareComposites(Isolate* isolate,
+                                 DirectHandle<JSComposite> ac,
+                                 DirectHandle<JSComposite> bc);
 
 
 }  // namespace internal
