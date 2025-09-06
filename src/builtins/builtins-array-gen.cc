@@ -906,6 +906,7 @@ void ArrayIncludesIndexofAssembler::GenerateSmiOrObject(
   TNode<Uint16T> search_type = LoadMapInstanceType(map);
   GotoIf(IsStringInstanceType(search_type), &string_loop);
   GotoIf(IsBigIntInstanceType(search_type), &bigint_loop);
+  // TODO(AC) gotoIfComposite
 
   // Use UniqueInt32Constant instead of BoolConstant here in order to ensure
   // that the graph structure does not depend on the value of the predicate
@@ -1093,6 +1094,7 @@ void ArrayIncludesIndexofAssembler::GenerateSmiOrObject(
     Increment(&index_var);
     Goto(&bigint_loop);
   }
+  //TODO(AC): Composite loop
   BIND(&return_found);
   if (variant == kIncludes) {
     Return(TrueConstant());

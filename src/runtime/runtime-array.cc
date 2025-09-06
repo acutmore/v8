@@ -370,6 +370,7 @@ RUNTIME_FUNCTION(Runtime_ArrayIndexOf) {
       JSObject::PrototypeHasNoElements(isolate, Cast<JSObject>(*object))) {
     DirectHandle<JSObject> obj = Cast<JSObject>(object);
     ElementsAccessor* elements = obj->GetElementsAccessor();
+    // TODO(AC): handle Composite
     Maybe<int64_t> result = elements->IndexOfValue(isolate, obj, search_element,
                                                    static_cast<uint32_t>(index),
                                                    static_cast<uint32_t>(len));
@@ -390,6 +391,7 @@ RUNTIME_FUNCTION(Runtime_ArrayIndexOf) {
       if (!present.FromJust()) continue;
       ASSIGN_RETURN_FAILURE_ON_EXCEPTION(isolate, element_k,
                                          Object::GetProperty(&it));
+      // TODO(AC): check for composite
       if (Object::StrictEquals(*search_element, *element_k)) {
         return *isolate->factory()->NewNumberFromInt64(index);
       }
