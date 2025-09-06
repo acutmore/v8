@@ -330,6 +330,19 @@ class CollectionsBuiltinsAssembler : public BaseCollectionsAssembler {
                                              Label* not_found);
 
 
+  // Specialization for composite objects.
+  // The {result} variable will contain the entry index if the key was found,
+  // or the hash code otherwise.
+  template <typename CollectionType>
+  void FindOrderedHashTableEntryForCompositeKey(TNode<CollectionType> table,
+                                                TNode<JSComposite> key_composite,
+                                                TVariable<IntPtrT>* result,
+                                                Label* entry_found,
+                                                Label* not_found);
+  void SameValueZeroComposite(TNode<JSComposite> key_composite,
+                              TNode<Object> candidate_key, Label* if_same,
+                              Label* if_not_same);
+
   // Specialization for non-strings, non-numbers. For those we only need
   // reference equality to compare the keys.
   // The {result} variable will contain the entry index if the key was found,

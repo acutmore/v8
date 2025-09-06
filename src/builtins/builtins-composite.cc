@@ -117,6 +117,12 @@ BUILTIN(CompositeConstructor) {
       isolate, composite, kDontThrow);
   MAYBE_RETURN(result, ReadOnlyRoots(isolate).exception());
 
+  // Ensure composites have a non-zero hash
+  // because the 'zero' hash has a special semantics within Map+Set logic
+  if (hashcode == 0) {
+    hashcode = 1;
+  }
+
   composite->set_hashcode(hashcode);
 
   return *composite;
