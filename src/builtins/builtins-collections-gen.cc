@@ -13,6 +13,7 @@
 #include "src/heap/heap-inl.h"
 #include "src/objects/hash-table-inl.h"
 #include "src/objects/js-collection.h"
+#include "src/objects/js-composite.h"
 #include "src/objects/ordered-hash-table.h"
 #include "src/roots/roots.h"
 
@@ -1234,6 +1235,20 @@ void CollectionsBuiltinsAssembler::FindOrderedHashTableEntryForBigIntKey(
 }
 
 template <typename CollectionType>
+void CollectionsBuiltinsAssembler::FindOrderedHashTableEntryForCompositeKey(
+    TNode<CollectionType> table, TNode<JSComposite> key_composite,
+    TVariable<IntPtrT>* result, Label* entry_found, Label* not_found) {
+  const TNode<Uint32T> hash = LoadObjectField<Uint32T>(key_composite, JSComposite::kHashcodeOffset);
+  *result = Signed(ChangeUint32ToWord(hash));
+  FindOrderedHashTableEntry<CollectionType>(
+      table, hash,
+      [&](TNode<Object> other_key, Label* if_same, Label* if_not_same) {
+        SameValueZeroComposite(key_composite, other_key, if_same, if_not_same);
+      },
+      result, entry_found, not_found);
+}
+
+template <typename CollectionType>
 void CollectionsBuiltinsAssembler::FindOrderedHashTableEntryForOtherKey(
     TNode<CollectionType> table, TNode<HeapObject> key_heap_object,
     TVariable<IntPtrT>* result, Label* entry_found, Label* not_found) {
@@ -1318,6 +1333,26 @@ void CollectionsBuiltinsAssembler::SameValueZeroHeapNumber(
     const TNode<Float64T> candidate_float = SmiToFloat64(CAST(candidate_key));
     Branch(Float64Equal(key_float, candidate_float), if_same, if_not_same);
   }
+}
+
+void CollectionsBuiltinsAssembler::SameValueZeroComposite(
+    TNode<JSComposite> key_composite, TNode<Object> candidate_key, Label* if_same,
+    Label* if_not_same) {
+  GotoIf(TaggedIsSmi(candidate_key), if_not_same);
+
+  TNode<Map> candidate_map = LoadMap(CAST(candidate_key));
+  TNode<Uint16T> candidate_instance_type = LoadMapInstanceType(candidate_map);
+  GotoIfNot(Word32Equal(candidate_instance_type, Int32Constant(JS_COMPOSITE_TYPE)), if_not_same);
+
+  TNode<JSComposite> candidate_composite = CAST(candidate_key);
+
+  TNode<Uint32T> key_hash = LoadObjectField<Uint32T>(key_composite, JSComposite::kHashcodeOffset);
+  TNode<Uint32T> candidate_hash = LoadObjectField<Uint32T>(candidate_composite, JSComposite::kHashcodeOffset);
+  GotoIfNot(Word32Equal(key_hash, candidate_hash), if_not_same);
+
+  TNode<Boolean> result = CAST(CallRuntime(Runtime::kCompositeEqualHelper, NoContextConstant(),
+                                          key_composite, candidate_composite));
+  Branch(IsTrue(result), if_same, if_not_same);
 }
 
 TF_BUILTIN(OrderedHashTableHealIndex, CollectionsBuiltinsAssembler) {
@@ -2442,7 +2477,7 @@ void CollectionsBuiltinsAssembler::TryLookupOrderedHashTableIndex(
     const TNode<CollectionType> table, const TNode<Object> key,
     TVariable<IntPtrT>* result, Label* if_entry_found, Label* if_not_found) {
   Label if_key_smi(this), if_key_string(this), if_key_heap_number(this),
-      if_key_bigint(this);
+      if_key_bigint(this), if_key_composite(this);
 
   GotoIf(TaggedIsSmi(key), &if_key_smi);
 
@@ -2452,6 +2487,7 @@ void CollectionsBuiltinsAssembler::TryLookupOrderedHashTableIndex(
   GotoIf(IsStringInstanceType(key_instance_type), &if_key_string);
   GotoIf(IsHeapNumberMap(key_map), &if_key_heap_number);
   GotoIf(IsBigIntInstanceType(key_instance_type), &if_key_bigint);
+  GotoIf(Word32Equal(key_instance_type, Int32Constant(JS_COMPOSITE_TYPE)), &if_key_composite);
 
   FindOrderedHashTableEntryForOtherKey<CollectionType>(
       table, CAST(key), result, if_entry_found, if_not_found);
@@ -2477,6 +2513,12 @@ void CollectionsBuiltinsAssembler::TryLookupOrderedHashTableIndex(
   BIND(&if_key_bigint);
   {
     FindOrderedHashTableEntryForBigIntKey<CollectionType>(
+        table, CAST(key), result, if_entry_found, if_not_found);
+  }
+
+  BIND(&if_key_composite);
+  {
+    FindOrderedHashTableEntryForCompositeKey<CollectionType>(
         table, CAST(key), result, if_entry_found, if_not_found);
   }
 }
