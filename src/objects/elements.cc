@@ -551,6 +551,7 @@ Maybe<int64_t> IndexOfValueSlowPath(Isolate* isolate,
     ASSIGN_RETURN_ON_EXCEPTION_VALUE(
         isolate, element_k, Object::GetProperty(&it), Nothing<int64_t>());
 
+    // TODO(AC): handle Composite
     if (Object::StrictEquals(*value, *element_k)) return Just<int64_t>(k);
   }
 
