@@ -194,11 +194,9 @@ InternalIndex OrderedHashTable<Derived, entrysize>::FindEntry(
       if (candidate_composite->hashcode() != key_composite->hashcode()) {
         keys_equal = false;
       } else {
-        AllowGarbageCollection allow_gc;
         DirectHandle<JSComposite> candidate_handle(candidate_composite, isolate);
         DirectHandle<JSComposite> key_handle(key_composite, isolate);
-        Tagged<Object> result = CompareComposites(isolate, candidate_handle, key_handle);
-        keys_equal = IsTrue(result, isolate);
+        keys_equal = CompareComposites(isolate, candidate_handle, key_handle);
       }
     }
 
@@ -246,11 +244,9 @@ HandleType<OrderedHashSet>::MaybeType OrderedHashSet::Add(
           if (candidate_composite->hashcode() != key_composite->hashcode()) {
             keys_equal = false;
           } else {
-            AllowGarbageCollection allow_gc;
             DirectHandle<JSComposite> candidate_handle(candidate_composite, isolate);
             DirectHandle<JSComposite> key_handle(key_composite, isolate);
-            Tagged<Object> result = CompareComposites(isolate, candidate_handle, key_handle);
-            keys_equal = IsTrue(result, isolate);
+            keys_equal = CompareComposites(isolate, candidate_handle, key_handle);
           }
         }
 
@@ -526,11 +522,9 @@ MaybeHandle<OrderedHashMap> OrderedHashMap::Add(Isolate* isolate,
           Tagged<JSComposite> key_composite = Cast<JSComposite>(raw_key);
 
           if (candidate_composite->hashcode() == key_composite->hashcode()) {
-            AllowGarbageCollection allow_gc;
             DirectHandle<JSComposite> candidate_handle(candidate_composite, isolate);
             DirectHandle<JSComposite> key_handle(key_composite, isolate);
-            Tagged<Object> result = CompareComposites(isolate, candidate_handle, key_handle);
-            keys_equal = IsTrue(result, isolate);
+            keys_equal = CompareComposites(isolate, candidate_handle, key_handle);
           }
         } else {
           keys_equal = Object::SameValueZero(candidate_key, raw_key);
@@ -1148,11 +1142,9 @@ InternalIndex SmallOrderedHashTable<Derived>::FindEntry(Isolate* isolate,
       if (candidate_composite->hashcode() != key_composite->hashcode()) {
         keys_equal = false;
       } else {
-        AllowGarbageCollection allow_gc;
         DirectHandle<JSComposite> candidate_handle(candidate_composite, isolate);
         DirectHandle<JSComposite> key_handle(key_composite, isolate);
-        Tagged<Object> result = CompareComposites(isolate, candidate_handle, key_handle);
-        keys_equal = IsTrue(result, isolate);
+        keys_equal = CompareComposites(isolate, candidate_handle, key_handle);
       }
     }
 

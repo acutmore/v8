@@ -26,11 +26,9 @@ class JSComposite : public TorqueGeneratedJSComposite<JSComposite, JSObject> {
   TQ_OBJECT_CONSTRUCTORS(JSComposite)
 };
 
-// TODO(AC): return a boolean
-Tagged<Object> CompareComposites(Isolate* isolate,
-                                 DirectHandle<JSComposite> ac,
-                                 DirectHandle<JSComposite> bc);
-
+bool CompareComposites(Isolate* isolate,
+                       DirectHandle<JSComposite> ac,
+                       DirectHandle<JSComposite> bc);
 
 }  // namespace internal
 }  // namespace v8
