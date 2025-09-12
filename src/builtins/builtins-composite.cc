@@ -142,12 +142,12 @@ BUILTIN(CompositeConstructor) {
   return *composite;
 }
 
-// Helper function to compare two JSComposite objects for equality
-Tagged<Object> CompareComposites(Isolate* isolate,
-                                 DirectHandle<JSComposite> ac,
-                                 DirectHandle<JSComposite> bc) {
+// Helper function to compare two JSComposite objects for equality.
+bool CompareComposites(Isolate* isolate,
+                       DirectHandle<JSComposite> ac,
+                       DirectHandle<JSComposite> bc) {
   if (ac.is_identical_to(bc)) {
-    return ReadOnlyRoots(isolate).true_value();
+    return true;
   }
 
   Tagged<Map> a_map = ac->map();
@@ -155,7 +155,7 @@ Tagged<Object> CompareComposites(Isolate* isolate,
 
   // If maps are different, the composites have different structure
   if (a_map != b_map) {
-    return ReadOnlyRoots(isolate).false_value();
+    return false;
   }
 
   Tagged<DescriptorArray> descriptors = a_map->instance_descriptors();
@@ -173,20 +173,21 @@ Tagged<Object> CompareComposites(Isolate* isolate,
       Tagged<Object> bv = bc->RawFastPropertyAt(field_index);
 
       if (IsJSComposite(av) && IsJSComposite(bv)) {
-        if (CompareComposites(isolate,
-              DirectHandle<JSComposite>(Cast<JSComposite>(av), isolate),
-              DirectHandle<JSComposite>(Cast<JSComposite>(bv), isolate)) != ReadOnlyRoots(isolate).true_value()) {
-          return ReadOnlyRoots(isolate).false_value();
-        }
+        return CompareComposites(
+          isolate,
+          DirectHandle<JSComposite>(Cast<JSComposite>(av), isolate),
+          DirectHandle<JSComposite>(Cast<JSComposite>(bv), isolate)
+        );
       } else {
+        // TODO(AC): SameValueZero?
         if (!Object::StrictEquals(av, bv)) {
-          return ReadOnlyRoots(isolate).false_value();
+          return false;
         }
       }
     }
   }
 
-  return ReadOnlyRoots(isolate).true_value();
+  return true;
 }
 
 RUNTIME_FUNCTION(Runtime_CompositeEqualHelper) {
@@ -196,7 +197,9 @@ RUNTIME_FUNCTION(Runtime_CompositeEqualHelper) {
   DirectHandle<JSComposite> ac = args.at<JSComposite>(0);
   DirectHandle<JSComposite> bc = args.at<JSComposite>(1);
 
-  return CompareComposites(isolate, ac, bc);
+  bool eq = CompareComposites(isolate, ac, bc);
+  if (eq) return ReadOnlyRoots(isolate).true_value();
+  return ReadOnlyRoots(isolate).false_value();
 }
 
 BUILTIN(CompositeEqualHelper) {
@@ -208,7 +211,9 @@ BUILTIN(CompositeEqualHelper) {
   DirectHandle<JSComposite> ac = args.at<JSComposite>(1);
   DirectHandle<JSComposite> bc = args.at<JSComposite>(2);
 
-  return CompareComposites(isolate, ac, bc);
+  bool eq = CompareComposites(isolate, ac, bc);
+  if (eq) return ReadOnlyRoots(isolate).true_value();
+  return ReadOnlyRoots(isolate).false_value();
 }
 
 }  // namespace internal
