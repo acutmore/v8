@@ -64,12 +64,10 @@ BUILTIN(CompositeConstructor) {
   std::sort(sorted_keys.begin(), sorted_keys.end(),
     [isolate](const DirectHandle<Name>& a, const DirectHandle<Name>& b) { return Name::CompareLessThan(isolate, a, b); });
 
-  DirectHandle<Map> map;
-  DirectHandle<JSFunction> target = args.target();
-  DirectHandle<JSReceiver> new_target = Cast<JSReceiver>(args.new_target());
-
-  ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
-      isolate, map, JSFunction::GetDerivedMap(isolate, target, new_target));
+  // Use the default Composite map directly (assuming no subclassing)
+  DirectHandle<NativeContext> native_context = isolate->native_context();
+  DirectHandle<JSFunction> composite_constructor(native_context->js_composite_fun(), isolate);
+  DirectHandle<Map> map(composite_constructor->initial_map(), isolate);
 
   DirectHandle<JSComposite> composite =
       isolate->factory()->NewJSComposite(map);
@@ -103,25 +101,10 @@ BUILTIN(CompositeConstructor) {
       hasher.AddHash(value_hash);
     }
 
-    if (key->AsIntegerIndex(&index)) {
-      MaybeDirectHandle<Object> set_result = JSObject::SetOwnElementIgnoreAttributes(
-          composite, static_cast<uint32_t>(index), value,
-          static_cast<PropertyAttributes>(READ_ONLY | DONT_DELETE));
-      if (set_result.is_null()) {
-        return ReadOnlyRoots(isolate).exception();
-      }
-    } else {
-      PropertyDescriptor desc;
-      desc.set_value(Cast<JSAny>(value));
-      desc.set_writable(false);
-      desc.set_enumerable(true);
-      desc.set_configurable(false);
-
-      Maybe<bool> success = JSReceiver::DefineOwnProperty(
-          isolate, composite, key, &desc,
-          Just(kThrowOnError));
-      MAYBE_RETURN(success, ReadOnlyRoots(isolate).exception());
-      CHECK(success.FromJust());
+    MaybeDirectHandle<Object> result = JSObject::SetOwnPropertyIgnoreAttributes(composite, key, value,
+        static_cast<PropertyAttributes>(READ_ONLY | DONT_DELETE));
+    if (result.is_null()) {
+      return ReadOnlyRoots(isolate).exception();
     }
   }
 
