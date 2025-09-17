@@ -74,6 +74,12 @@ BUILTIN(CompositeConstructor) {
 
   base::Hasher hasher(0x9E3779B9);  // Golden ratio constant as seed
 
+  // Fast path: install properties using map transitions + direct field writes.
+  // Falls back to generic definition only if a dictionary map is encountered.
+  DirectHandle<Map> current_map = map;
+  int current_property_index = 0;  // Counts successfully added fast properties.
+  bool use_fast_path = true;
+
   for (DirectHandle<Name> key : sorted_keys) {
     DirectHandle<Object> value;
     size_t index;
@@ -101,9 +107,40 @@ BUILTIN(CompositeConstructor) {
       hasher.AddHash(value_hash);
     }
 
-    MaybeDirectHandle<Object> result = JSObject::SetOwnPropertyIgnoreAttributes(composite, key, value,
-        static_cast<PropertyAttributes>(READ_ONLY | DONT_DELETE));
-    if (result.is_null()) {
+    if (use_fast_path) {
+      // Ensure we have an internalized name for transition (required by
+      // Map::TransitionToDataProperty which DCHECKs IsUniqueName).
+      DirectHandle<Name> internalized_key =
+          isolate->factory()->InternalizeName(key);
+
+      constexpr PropertyAttributes kAttrs =
+          static_cast<PropertyAttributes>(READ_ONLY | DONT_DELETE);
+      constexpr PropertyConstness kConstness = PropertyConstness::kConst;
+
+      current_map = Map::TransitionToDataProperty(
+          isolate, current_map, internalized_key, value, kAttrs, kConstness,
+          StoreOrigin::kNamed);
+
+      if (current_map->is_dictionary_map()) {
+        // Fallback: switch to generic definition path for this and remaining
+        // properties.
+        use_fast_path = false;
+      } else {
+        JSObject::MigrateToMap(isolate, composite, current_map);
+        PropertyDetails details = current_map->GetLastDescriptorDetails(isolate);
+        composite->WriteToField(InternalIndex(current_property_index), details,
+                                *value);
+        current_property_index++;
+        continue;  // Done with fast path for this property.
+      }
+    }
+
+    // Generic slow path (first time dictionary encountered or after).
+    MaybeDirectHandle<Object> slow_result =
+        JSObject::SetOwnPropertyIgnoreAttributes(
+            composite, key, value,
+            static_cast<PropertyAttributes>(READ_ONLY | DONT_DELETE));
+    if (slow_result.is_null()) {
       return ReadOnlyRoots(isolate).exception();
     }
   }
@@ -156,11 +193,11 @@ bool CompareComposites(Isolate* isolate,
       Tagged<Object> bv = bc->RawFastPropertyAt(field_index);
 
       if (IsJSComposite(av) && IsJSComposite(bv)) {
-        return CompareComposites(
-          isolate,
-          DirectHandle<JSComposite>(Cast<JSComposite>(av), isolate),
-          DirectHandle<JSComposite>(Cast<JSComposite>(bv), isolate)
-        );
+        if (!CompareComposites(isolate,
+              DirectHandle<JSComposite>(Cast<JSComposite>(av), isolate),
+              DirectHandle<JSComposite>(Cast<JSComposite>(bv), isolate))) {
+          return false;
+        }
       } else {
         // TODO(AC): SameValueZero?
         if (!Object::StrictEquals(av, bv)) {
