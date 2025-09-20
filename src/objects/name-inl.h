@@ -294,6 +294,17 @@ bool Name::ContainsCachedArrayIndex(uint32_t raw_hash_field) {
 bool Name::CompareLessThan(Isolate* isolate, DirectHandle<Name> a, DirectHandle<Name> b) {
   if (a.is_identical_to(b)) return false;
 
+  size_t a_index, b_index;
+  bool a_is_integer = (*a)->AsIntegerIndex(&a_index);
+  bool b_is_integer = (*b)->AsIntegerIndex(&b_index);
+
+  if (a_is_integer && b_is_integer) {
+    return a_index < b_index;
+  }
+  if (a_is_integer != b_is_integer) {
+    return a_is_integer;
+  }
+
   if (!IsString(*a) || !IsString(*b)) {
     return IsString(*a); // Strings < Symbols
   }

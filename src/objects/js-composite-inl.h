@@ -17,11 +17,14 @@ namespace internal {
 
 TQ_OBJECT_CONSTRUCTORS_IMPL(JSComposite)
 
-inline uint32_t JSComposite::hashcode() const {
-  return RELAXED_READ_INT32_FIELD(*this, kHashcodeOffset);
+inline Tagged<Smi> JSComposite::hashcode() const {
+  return TaggedField<Smi>::load(*this, kHashcodeOffset);
+}
+inline void JSComposite::set_hashcode(Tagged<Smi> value) {
+  TaggedField<Smi>::store(*this, kHashcodeOffset, value);
 }
 inline void JSComposite::set_hashcode(uint32_t value) {
-  RELAXED_WRITE_INT32_FIELD(*this, kHashcodeOffset, value);
+  set_hashcode(Smi::FromInt(value & Smi::kMaxValue));
 }
 
 
