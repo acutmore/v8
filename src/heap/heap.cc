@@ -2824,6 +2824,68 @@ void Heap::MarkCompactPrologue() {
   // Flush the number to string caches.
   smi_string_cache()->Clear();
   double_string_cache()->Clear();
+
+  // Prune Composite interning caches across all native contexts: compact
+  // WeakArrayList collision buckets, remove empty buckets, and shrink tables.
+  {
+    HandleScope handle_scope(isolate());
+    for (auto& nc_handle : FindAllNativeContexts()) {
+      Tagged<NativeContext> native_context = *nc_handle;
+      Tagged<Object> table_obj = native_context->js_composite_cache();
+      if (!IsObjectHashTable(table_obj)) continue;
+      Handle<ObjectHashTable> table(Cast<ObjectHashTable>(table_obj), isolate());
+
+      ReadOnlyRoots roots = ReadOnlyRoots(isolate());
+      std::vector<std::pair<Handle<Object>, Handle<Object>>> kept;
+      kept.reserve(table->NumberOfElements());
+      bool modified = false;
+
+      for (InternalIndex entry : table->IterateEntries()) {
+        Tagged<Object> raw_key;
+        if (!table->ToKey(roots, entry, &raw_key)) continue;  // empty or hole
+        Handle<Object> key = handle(raw_key, isolate());
+
+        int value_index = ObjectHashTable::EntryToValueIndex(entry);
+        Tagged<Object> raw_value = table->get(value_index);
+
+        if (IsWeakArrayList(raw_value)) {
+          Handle<WeakArrayList> list(Cast<WeakArrayList>(raw_value), isolate());
+          int old_len = list->length();
+          if (old_len > 0) {
+            int live = list->CountLiveWeakReferences();
+            if (live == 0) {
+              modified = true;
+              continue;
+            }
+            if (live != old_len) {
+              modified = true;
+              DirectHandle<WeakArrayList> compact = isolate()->factory()->NewWeakArrayList(live, AllocationType::kOld);
+              int to = 0;
+              for (int i = 0; i < old_len; i++) {
+                Tagged<MaybeObject> elem = list->Get(i);
+                if (elem.IsCleared()) continue;
+                compact->Set(to++, elem);
+              }
+              DCHECK_EQ(to, live);
+              kept.emplace_back(key, handle(Cast<Object>(*compact), isolate()));
+            } else {
+              kept.emplace_back(key, handle(raw_value, isolate()));
+            }
+          } else {
+            kept.emplace_back(key, handle(raw_value, isolate()));
+          }
+        }
+      }
+
+      if (!modified) continue;
+
+      Handle<ObjectHashTable> rebuilt = ObjectHashTable::New(isolate(), static_cast<int>(kept.size()), AllocationType::kOld);
+      for (auto& kv : kept) {
+        rebuilt = ObjectHashTable::Put(rebuilt, kv.first, kv.second);
+      }
+      native_context->set_js_composite_cache(*rebuilt);
+    }
+  }
 }
 
 void Heap::Scavenge() {

@@ -1,8 +1,7 @@
-
 #include 'src/objects/js-composite.h'
 
 extern class JSComposite extends JSObject {
-  hashcode: uint32;
+  hashcode: Smi;
 }
 
 transitioning javascript builtin CompositeIsComposite(

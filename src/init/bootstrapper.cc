@@ -4578,6 +4578,11 @@ void Genesis::InitializeGlobal(DirectHandle<JSGlobalObject> global_object,
 
     SimpleInstallFunction(isolate_, composite_fun, "isComposite",
       Builtin::kCompositeIsComposite, 1, kAdapt);
+
+    // Initialize empty Composite cache (hash -> WeakArrayList of composites)
+    DirectHandle<ObjectHashTable> composite_cache =
+        ObjectHashTable::New(isolate_, 0);
+    native_context()->set_js_composite_cache(*composite_cache);
   }
 
   {  // -- J S M o d u l e N a m e s p a c e
