@@ -81,7 +81,7 @@ class CompositeKey {
       prop_index++;
     }
 
-    return prop_index == properties_.size();
+    return true;
   }
 
   // Create the actual composite if no match found
