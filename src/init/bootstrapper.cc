@@ -4576,6 +4576,10 @@ void Genesis::InitializeGlobal(DirectHandle<JSGlobalObject> global_object,
         Context::JS_COMPOSITE_FUNCTION_INDEX
     );
 
+    // Initialize the cached map slot with the initial composite map
+    // It will be updated as composites with different shapes are created
+    native_context()->set_js_composite_cached_map(composite_fun->initial_map());
+
     SimpleInstallFunction(isolate_, composite_fun, "isComposite",
       Builtin::kCompositeIsComposite, 1, kAdapt);
 

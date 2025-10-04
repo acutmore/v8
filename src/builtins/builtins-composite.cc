@@ -20,6 +20,7 @@
 #include "src/objects/field-index-inl.h"
 #include "src/objects/descriptor-array-inl.h"
 #include "src/objects/map-inl.h"
+#include "src/objects/transitions-inl.h"
 #include "src/runtime/runtime.h"
 #include "src/base/small-vector.h"
 
@@ -128,10 +129,13 @@ BUILTIN(CompositeConstructor) {
       });
 
     // Fast path: Pre-compute final map, then install all properties at once
-    DirectHandle<Map> current_map = map;
+    constexpr PropertyAttributes kAttrs =
+        static_cast<PropertyAttributes>(READ_ONLY | DONT_DELETE);
+    constexpr PropertyConstness kConstness = PropertyConstness::kConst;
+
     bool use_fast_path = true;
 
-    // Pre-compute all internalized keys and build final map in one batch
+    // Pre-compute all internalized keys
     base::SmallVector<DirectHandle<Name>, 16> internalized_keys;
     internalized_keys.reserve(properties.size());
 
@@ -140,13 +144,73 @@ BUILTIN(CompositeConstructor) {
       internalized_keys.push_back(internalized_key);
     }
 
-    // Batch create all map transitions
-    constexpr PropertyAttributes kAttrs =
-        static_cast<PropertyAttributes>(READ_ONLY | DONT_DELETE);
-    constexpr PropertyConstness kConstness = PropertyConstness::kConst;
+    // Try to reuse cached map if it matches our shape perfectly
+    DirectHandle<Map> current_map = map;
+    size_t matched_properties = 0;
+
+    Tagged<Map> cached = native_context->js_composite_cached_map();
+    DirectHandle<Map> cached_map(cached, isolate);
+
+    // Check if cached map is deprecated and update if needed
+    if (cached_map->is_deprecated()) {
+      cached_map = Map::Update(isolate, cached_map);
+      native_context->set_js_composite_cached_map(*cached_map);
+    }
+
+    // Check for perfect match: same number of properties and all keys match
+    // Skip the check if cached_map is the initial map (0 descriptors) and we have properties
+    if (cached_map->NumberOfOwnDescriptors() > 0 &&
+        cached_map->NumberOfOwnDescriptors() == static_cast<int>(internalized_keys.size())) {
+        bool perfect_match = true;
+        Tagged<DescriptorArray> descriptors = cached_map->instance_descriptors();
+
+        for (size_t i = 0; i < internalized_keys.size(); ++i) {
+          Tagged<Name> expected_key = descriptors->GetKey(InternalIndex(i));
+          if (*internalized_keys[i] != expected_key) {
+            perfect_match = false;
+            break;
+          }
+          PropertyDetails details = descriptors->GetDetails(InternalIndex(i));
+          if (details.constness() != kConstness || details.attributes() != kAttrs) {
+            perfect_match = false;
+            break;
+          }
+        }
+
+      if (perfect_match) {
+        current_map = cached_map;
+        matched_properties = internalized_keys.size();
+      }
+    }
+
+    // Fall back to searching transitions if cached map didn't match
+    if (matched_properties == 0) {
+      for (size_t i = 0; i < internalized_keys.size(); ++i) {
+        MaybeHandle<Map> maybe_next = TransitionsAccessor::SearchTransition(
+            isolate, current_map, *internalized_keys[i], PropertyKind::kData, kAttrs);
+
+        if (maybe_next.is_null()) {
+          break;  // No existing transition found, will create from here
+        }
+
+        DirectHandle<Map> next_map = maybe_next.ToHandleChecked();
+
+        // Verify constness matches what we need
+        InternalIndex descriptor = next_map->LastAdded();
+        PropertyDetails details = next_map->instance_descriptors(isolate)->GetDetails(descriptor);
+        if (details.constness() != kConstness) {
+          break;  // Constness mismatch, need to create new transition
+        }
+
+        current_map = next_map;
+        matched_properties++;
+      }
+    }
 
     DirectHandle<Map> final_map = current_map;
-    for (size_t i = 0; i < internalized_keys.size() && use_fast_path; ++i) {
+
+    // Create remaining transitions if needed
+    for (size_t i = matched_properties; i < internalized_keys.size() && use_fast_path; ++i) {
       DirectHandle<Name> key = internalized_keys[i];
       DirectHandle<Object> value = properties[i].second;
 
@@ -164,36 +228,58 @@ BUILTIN(CompositeConstructor) {
     if (use_fast_path) {
       // Migrate to final map once, then write all properties directly
       JSObject::MigrateToMap(isolate, composite, final_map);
-    }
 
-    for (size_t i = 0; i < properties.size(); ++i) {
-      DirectHandle<Name> key = properties[i].first;
-      DirectHandle<Object> value = properties[i].second;
+      // Cache the descriptor array to avoid repeated lookups
+      DisallowGarbageCollection no_gc;
+      Tagged<DescriptorArray> descriptors = final_map->instance_descriptors();
 
-      // Normalize HeapNumber(0) to Smi(0)
-      if (IsHeapNumber(*value) && Cast<HeapNumber>(*value)->value() == 0) {
-        value = handle(Smi::FromInt(0), isolate);
-      }
+      for (size_t i = 0; i < properties.size(); ++i) {
+        Tagged<Name> key = *properties[i].first;
+        Tagged<Object> value = *properties[i].second;
 
-      hasher.AddHash(key->hash());
+        // Normalize HeapNumber(0) to Smi(0)
+        if (IsHeapNumber(value) && Cast<HeapNumber>(value)->value() == 0) {
+          value = Smi::FromInt(0);
+        }
 
-      if (IsJSComposite(*value)) {
-        DirectHandle<JSComposite> nested_composite(Cast<JSComposite>(*value), isolate);
-        Tagged<Smi> nested_hash = nested_composite->hashcode();
-        hasher.AddHash(static_cast<uint32_t>(Smi::ToInt(nested_hash)));
-      } else {
-        Tagged<Smi> hash_smi = Object::GetOrCreateHash(*value, isolate);
-        uint32_t value_hash = static_cast<uint32_t>(Smi::ToInt(hash_smi));
-        hasher.AddHash(value_hash);
-      }
+        hasher.AddHash(key->hash());
 
-      if (use_fast_path) {
+        if (IsJSComposite(value)) {
+          Tagged<Smi> nested_hash = Cast<JSComposite>(value)->hashcode();
+          hasher.AddHash(static_cast<uint32_t>(Smi::ToInt(nested_hash)));
+        } else {
+          Tagged<Smi> hash_smi = Object::GetOrCreateHash(value, isolate);
+          uint32_t value_hash = static_cast<uint32_t>(Smi::ToInt(hash_smi));
+          hasher.AddHash(value_hash);
+        }
+
         // Write property value directly - we already have the final map
-        DisallowGarbageCollection no_gc;
-        Tagged<DescriptorArray> descriptors = final_map->instance_descriptors();
         PropertyDetails details = descriptors->GetDetails(InternalIndex(i));
-        composite->WriteToField(InternalIndex(i), details, *value);
-      } else {
+        composite->WriteToField(InternalIndex(i), details, value);
+      }
+    } else {
+      // Slow path fallback
+      for (size_t i = 0; i < properties.size(); ++i) {
+        DirectHandle<Name> key = properties[i].first;
+        DirectHandle<Object> value = properties[i].second;
+
+        // Normalize HeapNumber(0) to Smi(0)
+        if (IsHeapNumber(*value) && Cast<HeapNumber>(*value)->value() == 0) {
+          value = handle(Smi::FromInt(0), isolate);
+        }
+
+        hasher.AddHash(key->hash());
+
+        if (IsJSComposite(*value)) {
+          DirectHandle<JSComposite> nested_composite(Cast<JSComposite>(*value), isolate);
+          Tagged<Smi> nested_hash = nested_composite->hashcode();
+          hasher.AddHash(static_cast<uint32_t>(Smi::ToInt(nested_hash)));
+        } else {
+          Tagged<Smi> hash_smi = Object::GetOrCreateHash(*value, isolate);
+          uint32_t value_hash = static_cast<uint32_t>(Smi::ToInt(hash_smi));
+          hasher.AddHash(value_hash);
+        }
+
         // Generic slow path fallback
         MaybeDirectHandle<Object> slow_result =
             JSObject::SetOwnPropertyIgnoreAttributes(
@@ -310,6 +396,14 @@ BUILTIN(CompositeConstructor) {
   }
 
   composite->set_hashcode(hashcode);
+
+  // Cache the final map for future Composite constructions with same shape
+  // Only cache maps that have properties and aren't in dictionary mode
+  Tagged<Map> final_composite_map = composite->map();
+  if (final_composite_map->NumberOfOwnDescriptors() > 0 &&
+      !final_composite_map->is_dictionary_map()) {
+    native_context->set_js_composite_cached_map(final_composite_map);
+  }
 
   return *composite;
 }
