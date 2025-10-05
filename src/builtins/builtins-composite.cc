@@ -20,6 +20,7 @@
 #include "src/objects/field-index-inl.h"
 #include "src/objects/descriptor-array-inl.h"
 #include "src/objects/map-inl.h"
+#include "src/objects/transitions-inl.h"
 #include "src/runtime/runtime.h"
 #include "src/objects/hash-table.h"
 #include "src/objects/fixed-array.h"
@@ -88,48 +89,130 @@ class CompositeKey {
   DirectHandle<JSComposite> CreateComposite(Isolate* isolate) {
     DirectHandle<NativeContext> native_context = isolate->native_context();
     DirectHandle<JSFunction> composite_constructor(native_context->js_composite_fun(), isolate);
-    DirectHandle<Map> map(composite_constructor->initial_map(), isolate);
-    DirectHandle<JSComposite> composite = isolate->factory()->NewJSComposite(map);
-
-    // Use fast path map transitions if possible
-    DirectHandle<Map> final_map = map;
-    bool use_fast_path = true;
+    DirectHandle<Map> initial_map(composite_constructor->initial_map(), isolate);
 
     constexpr PropertyAttributes kAttrs =
       static_cast<PropertyAttributes>(READ_ONLY | DONT_DELETE);
     constexpr PropertyConstness kConstness = PropertyConstness::kConst;
 
-    for (size_t i = 0; i < properties_.size() && use_fast_path; ++i) {
-      const Property& prop = properties_[i];
-      DirectHandle<Name> internalized_key = isolate->factory()->InternalizeName(prop.key);
+    Tagged<Map> cached = native_context->js_composite_cached_map();
+    DirectHandle<Map> cached_map(cached, isolate);
 
-      DirectHandle<Map> new_map = Map::TransitionToDataProperty(
-          isolate, final_map, internalized_key, prop.value, kAttrs, kConstness,
-          StoreOrigin::kNamed);
-
-      if (new_map->is_dictionary_map()) {
-        use_fast_path = false;
-        break;
-      }
-      final_map = new_map;
+    if (cached_map->is_deprecated()) {
+      cached_map = Map::Update(isolate, cached_map);
+      native_context->set_js_composite_cached_map(*cached_map);
     }
 
-    if (use_fast_path) {
-      JSObject::MigrateToMap(isolate, composite, final_map);
+    DirectHandle<Map> final_map = initial_map;
+    size_t matched_properties = 0;
+
+    if (cached_map->NumberOfOwnDescriptors() > 0 &&
+        cached_map->NumberOfOwnDescriptors() == static_cast<int>(properties_.size())) {
+      bool perfect_match = true;
+      Tagged<DescriptorArray> descriptors = cached_map->instance_descriptors();
+
       for (size_t i = 0; i < properties_.size(); ++i) {
-        DisallowGarbageCollection no_gc;
-        Tagged<DescriptorArray> descriptors = final_map->instance_descriptors();
-        PropertyDetails details = descriptors->GetDetails(InternalIndex(i));
-        composite->WriteToField(InternalIndex(i), details, *properties_[i].value);
-      }
-    } else {
-      // Fallback to slow path
-      for (const Property& prop : properties_) {
-        MaybeDirectHandle<Object> result = JSObject::SetOwnPropertyIgnoreAttributes(
-            composite, prop.key, prop.value, kAttrs);
-        if (result.is_null()) {
-          return DirectHandle<JSComposite>();  // Exception
+        Tagged<Name> expected_key = descriptors->GetKey(InternalIndex(i));
+        DirectHandle<Name> internalized_key = isolate->factory()->InternalizeName(properties_[i].key);
+
+        if (*internalized_key != expected_key) {
+          perfect_match = false;
+          break;
         }
+
+        PropertyDetails details = descriptors->GetDetails(InternalIndex(i));
+        if (details.constness() != kConstness ||
+            details.attributes() != kAttrs) {
+          perfect_match = false;
+          break;
+        }
+      }
+
+      if (perfect_match) {
+        final_map = cached_map;
+        matched_properties = properties_.size();
+      }
+    }
+
+    base::SmallVector<DirectHandle<Name>, 16> internalized_keys;
+    internalized_keys.reserve(properties_.size());
+    for (const Property& prop : properties_) {
+      internalized_keys.push_back(isolate->factory()->InternalizeName(prop.key));
+    }
+
+    if (matched_properties < properties_.size()) {
+      DirectHandle<Map> current_map = (matched_properties == 0) ? initial_map : final_map;
+
+      for (size_t i = matched_properties; i < properties_.size(); ++i) {
+        MaybeHandle<Map> maybe_next = TransitionsAccessor::SearchTransition(
+            isolate, current_map, *internalized_keys[i], PropertyKind::kData, kAttrs);
+
+        if (!maybe_next.is_null()) {
+          DirectHandle<Map> next_map = maybe_next.ToHandleChecked();
+
+          InternalIndex descriptor = next_map->LastAdded();
+          PropertyDetails details = next_map->instance_descriptors(isolate)->GetDetails(descriptor);
+
+          if (details.constness() == kConstness &&
+              details.attributes() == kAttrs &&
+              !next_map->is_dictionary_map()) {
+            current_map = next_map;
+            matched_properties++;
+            continue;
+          }
+        }
+
+        // No existing transition found, create new ones
+        break;
+      }
+
+      // Create remaining transitions if needed
+      for (size_t i = matched_properties; i < properties_.size(); ++i) {
+        current_map = Map::TransitionToDataProperty(
+            isolate, current_map, internalized_keys[i], properties_[i].value,
+            kAttrs, kConstness, StoreOrigin::kNamed);
+
+        if (current_map->is_dictionary_map()) {
+          // Fallback to slow path if dictionary mode
+          DirectHandle<JSComposite> composite = isolate->factory()->NewJSComposite(initial_map);
+
+          for (size_t j = 0; j < properties_.size(); ++j) {
+            MaybeDirectHandle<Object> result = JSObject::SetOwnPropertyIgnoreAttributes(
+                composite, internalized_keys[j], properties_[j].value, kAttrs);
+            if (result.is_null()) {
+              return DirectHandle<JSComposite>();  // Exception
+            }
+          }
+
+          Maybe<bool> prevent_result = JSReceiver::PreventExtensions(isolate, composite, kDontThrow);
+          if (prevent_result.IsNothing()) {
+            return DirectHandle<JSComposite>();  // Exception
+          }
+
+          composite->set_hashcode(hashcode_);
+          return composite;
+        }
+      }
+
+      final_map = current_map;
+    }
+
+    DirectHandle<JSComposite> composite = isolate->factory()->NewJSComposite(initial_map);
+    JSObject::MigrateToMap(isolate, composite, final_map);
+
+    {
+      DisallowGarbageCollection no_gc;
+      Tagged<DescriptorArray> descriptors = final_map->instance_descriptors();
+
+      for (size_t i = 0; i < properties_.size(); ++i) {
+        Tagged<Object> value = *properties_[i].value;
+
+        if (IsHeapNumber(value) && Cast<HeapNumber>(value)->value() == 0) {
+          value = Smi::FromInt(0);
+        }
+
+        PropertyDetails details = descriptors->GetDetails(InternalIndex(i));
+        composite->WriteToField(InternalIndex(i), details, value);
       }
     }
 
@@ -139,6 +222,13 @@ class CompositeKey {
     }
 
     composite->set_hashcode(hashcode_);
+
+    Tagged<Map> final_map_tagged = composite->map();
+    if (final_map_tagged->NumberOfOwnDescriptors() > 0 &&
+        !final_map_tagged->is_dictionary_map()) {
+      native_context->set_js_composite_cached_map(final_map_tagged);
+    }
+
     return composite;
   }
 

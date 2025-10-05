@@ -227,6 +227,7 @@ enum ContextLookupFlags {
   V(JS_RAW_JSON_MAP, Map, js_raw_json_map)                                     \
   V(JS_COMPOSITE_FUNCTION_INDEX, JSFunction, js_composite_fun)                 \
   V(JS_COMPOSITE_CACHE_INDEX, ObjectHashTable, js_composite_cache)             \
+  V(JS_COMPOSITE_CACHED_MAP_INDEX, Map, js_composite_cached_map)               \
   V(JS_SET_FUN_INDEX, JSFunction, js_set_fun)                                  \
   V(JS_SET_MAP_INDEX, Map, js_set_map)                                         \
   V(JS_WEAK_MAP_FUN_INDEX, JSFunction, js_weak_map_fun)                        \

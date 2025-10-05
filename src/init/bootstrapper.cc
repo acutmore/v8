@@ -4583,6 +4583,8 @@ void Genesis::InitializeGlobal(DirectHandle<JSGlobalObject> global_object,
     DirectHandle<ObjectHashTable> composite_cache =
         ObjectHashTable::New(isolate_, 0);
     native_context()->set_js_composite_cache(*composite_cache);
+
+    native_context()->set_js_composite_cached_map(composite_fun->initial_map());
   }
 
   {  // -- J S M o d u l e N a m e s p a c e
