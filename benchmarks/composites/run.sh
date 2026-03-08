@@ -33,3 +33,9 @@ echo
 
 "$D8" "$DIR/set-recreate-equal.js"
 echo
+
+"$D8" "$DIR/set-recreate-equal-deep.js"
+echo
+
+"$D8" "$DIR/set-recreate-equal-wide.js"
+echo
