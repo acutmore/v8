@@ -21,7 +21,7 @@
     print(`Ops/sec: ${Math.round((iterations / elapsedMs) * 1000)}`);
   }
 
-  function makeCompositeKey(id, options = {}) {
+  function makeShallowCompositeKey(id, options = {}) {
     const duplicateGroupMod = options.duplicateGroupMod ?? 10;
 
     return new Composite({
@@ -34,9 +34,65 @@
     });
   }
 
+  function makeDeepCompositeKey(id, options = {}) {
+    const duplicateGroupMod = options.duplicateGroupMod ?? 10;
+
+    return new Composite({
+      kind: "node",
+      id,
+      meta: new Composite({
+        level: 1,
+        child: new Composite({
+          level: 2,
+          child: new Composite({
+            level: 3,
+            child: new Composite({
+              active: true,
+              group: id % duplicateGroupMod,
+            }),
+          }),
+        }),
+      }),
+    });
+  }
+
+  function makeWideCompositeKey(id, options = {}) {
+    const duplicateGroupMod = options.duplicateGroupMod ?? 10;
+
+    return new Composite({
+      kind: "node",
+      id,
+      a: id % 2,
+      b: id % 3,
+      c: id % 5,
+      d: id % 7,
+      e: id % 11,
+      f: id % 13,
+      g: id % 17,
+      meta: new Composite({
+        active: true,
+        group: id % duplicateGroupMod,
+      }),
+    });
+  }
+
+  function makeCompositeKey(id, options = {}) {
+    const shape = options.shape ?? "shallow";
+
+    switch (shape) {
+      case "deep":
+        return makeDeepCompositeKey(id, options);
+      case "wide":
+        return makeWideCompositeKey(id, options);
+      case "shallow":
+      default:
+        return makeShallowCompositeKey(id, options);
+    }
+  }
+
   function buildKeyPool(count, options = {}) {
     const duplication = options.duplication ?? 0;
-    const uniqueCount = Math.max(1, Math.floor(count * (1 - duplication)));
+    const uniqueCount = Math.max(1, Math.round(count * (1 - duplication)));
 
     const keys = [];
     for (let i = 0; i < count; i++) {
@@ -52,6 +108,9 @@
     DEFAULT_KEY_COUNT,
     now,
     printResult,
+    makeShallowCompositeKey,
+    makeDeepCompositeKey,
+    makeWideCompositeKey,
     makeCompositeKey,
     buildKeyPool,
   };

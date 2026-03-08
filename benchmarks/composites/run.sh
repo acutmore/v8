@@ -19,6 +19,12 @@ echo
 "$D8" "$DIR/map-recreate-equal-high-duplication.js"
 echo
 
+"$D8" "$DIR/map-recreate-equal-deep.js"
+echo
+
+"$D8" "$DIR/map-recreate-equal-wide.js"
+echo
+
 "$D8" "$DIR/map-create-unique.js"
 echo
 
