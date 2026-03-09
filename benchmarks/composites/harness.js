@@ -56,24 +56,57 @@
     });
   }
 
+  function getWideFieldSpecs(widthLevel = "wide") {
+    switch (widthLevel) {
+      case "wider":
+        return [
+          ["a", 2],
+          ["b", 3],
+          ["c", 5],
+          ["d", 7],
+          ["e", 11],
+          ["f", 13],
+          ["g", 17],
+          ["h", 19],
+          ["i", 23],
+          ["j", 29],
+          ["k", 31],
+          ["l", 37],
+        ];
+      case "wide":
+      default:
+        return [
+          ["a", 2],
+          ["b", 3],
+          ["c", 5],
+          ["d", 7],
+          ["e", 11],
+          ["f", 13],
+          ["g", 17],
+        ];
+    }
+  }
+
   function makeWideCompositeKey(id, options = {}) {
     const duplicateGroupMod = options.duplicateGroupMod ?? 10;
+    const widthLevel = options.widthLevel ?? "wide";
+    const fieldSpecs = getWideFieldSpecs(widthLevel);
 
-    return new Composite({
+    const value = {
       kind: "node",
       id,
-      a: id % 2,
-      b: id % 3,
-      c: id % 5,
-      d: id % 7,
-      e: id % 11,
-      f: id % 13,
-      g: id % 17,
-      meta: new Composite({
-        active: true,
-        group: id % duplicateGroupMod,
-      }),
+    };
+
+    for (const [fieldName, mod] of fieldSpecs) {
+      value[fieldName] = id % mod;
+    }
+
+    value.meta = new Composite({
+      active: true,
+      group: id % duplicateGroupMod,
     });
+
+    return new Composite(value);
   }
 
   function makeCompositeKey(id, options = {}) {
