@@ -25,6 +25,9 @@ echo
 "$D8" "$DIR/map-recreate-equal-wide.js"
 echo
 
+"$D8" "$DIR/map-recreate-equal-wider.js"
+echo
+
 "$D8" "$DIR/map-create-unique.js"
 echo
 
@@ -40,8 +43,8 @@ echo
 "$D8" "$DIR/set-recreate-equal-wide.js"
 echo
 
-"$D8" "$DIR/map-recreate-equal-wider.js"
+"$D8" "$DIR/set-recreate-equal-wider.js"
 echo
 
-"$D8" "$DIR/set-recreate-equal-wider.js"
+"$D8" "$DIR/reactivity-fanout-vs-chain.js"
 echo
