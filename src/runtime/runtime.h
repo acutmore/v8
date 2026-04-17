@@ -107,6 +107,9 @@ constexpr bool CanTriggerGC(T... properties) {
   F(StoreKeyedToSuper, 4, 1)                \
   F(StoreToSuper, 4, 1)
 
+#define FOR_EACH_INTRINSIC_COMPOSITE(F, I) \
+  F(CompositeStats, 0, 1)
+
 #define FOR_EACH_INTRINSIC_COLLECTIONS(F, I) \
   F(MapGrow, 1, 1)                           \
   F(MapShrink, 1, 1)                         \
@@ -836,6 +839,7 @@ constexpr bool CanTriggerGC(T... properties) {
   FOR_EACH_INTRINSIC_BIGINT(F, I)                                 \
   FOR_EACH_INTRINSIC_CLASSES(F, I)                                \
   FOR_EACH_INTRINSIC_COLLECTIONS(F, I)                            \
+  FOR_EACH_INTRINSIC_COMPOSITE(F, I)                              \
   FOR_EACH_INTRINSIC_COMPILER(F, I)                               \
   FOR_EACH_INTRINSIC_DATE(F, I)                                   \
   FOR_EACH_INTRINSIC_DEBUG(F, I)                                  \
