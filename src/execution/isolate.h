@@ -592,6 +592,14 @@ __attribute__((tls_model(V8_TLS_MODEL))) extern thread_local Isolate*
 // Factory's members available to Isolate directly.
 class V8_EXPORT_PRIVATE HiddenFactory : private Factory {};
 
+// Per-Isolate stats for the composite intern cache. Exposed via %CompositeStats().
+struct CompositeStats {
+  uint64_t total_insertions = 0;
+  uint64_t collision_insertions = 0;
+  uint32_t max_bucket_size = 0;
+  uint64_t total_equality_checks = 0;
+};
+
 class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
   // These forward declarations are required to make the friend declarations in
   // PerIsolateThreadData work on some older versions of gcc.
@@ -1644,6 +1652,8 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
 
   DateCache* date_cache() const { return date_cache_; }
 
+  CompositeStats& composite_stats() { return composite_stats_; }
+
   void set_date_cache(DateCache* date_cache);
 
   // Cache stamp used for invalidating caches in JSDate.
@@ -2643,6 +2653,7 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
   // TerminateExecution exceptions.
   std::unordered_set<int32_t*> active_dynamic_regexp_result_vectors_;
   DateCache* date_cache_ = nullptr;
+  CompositeStats composite_stats_;
   base::RandomNumberGenerator* random_number_generator_ = nullptr;
   base::RandomNumberGenerator* fuzzer_rng_ = nullptr;
   v8::Isolate::ReleaseCppHeapCallback release_cpp_heap_callback_ = nullptr;
