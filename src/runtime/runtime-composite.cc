@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "src/base/numbers/double.h"
 #include "src/execution/isolate-inl.h"
 #include "src/objects/js-objects-inl.h"
 #include "src/runtime/runtime-utils.h"
@@ -23,12 +22,12 @@ RUNTIME_FUNCTION(Runtime_CompositeStats) {
 
   JSObject::AddProperty(
       isolate, result, "totalInsertions",
-      isolate->factory()->NewNumber(base::uint64_to_double(s.total_insertions)),
+      isolate->factory()->NewNumber(static_cast<double>(s.total_insertions)),
       NONE);
   JSObject::AddProperty(
       isolate, result, "collisionInsertions",
       isolate->factory()->NewNumber(
-          base::uint64_to_double(s.collision_insertions)),
+          static_cast<double>(s.collision_insertions)),
       NONE);
   JSObject::AddProperty(
       isolate, result, "maxBucketSize",
@@ -37,7 +36,7 @@ RUNTIME_FUNCTION(Runtime_CompositeStats) {
   JSObject::AddProperty(
       isolate, result, "totalEqualityChecks",
       isolate->factory()->NewNumber(
-          base::uint64_to_double(s.total_equality_checks)),
+          static_cast<double>(s.total_equality_checks)),
       NONE);
 
   s = {};  // reset all counters
