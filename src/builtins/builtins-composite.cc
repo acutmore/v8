@@ -170,10 +170,15 @@ DirectHandle<JSComposite> LookupCompositeWithKey(Isolate* isolate, CompositeKey*
     DCHECK(IsWeakArrayList(cached_entry));
     DirectHandle<WeakArrayList> composite_list(Cast<WeakArrayList>(cached_entry), isolate);
 
+    auto& stats = isolate->composite_stats();
+    auto depth = static_cast<uint32_t>(composite_list->length());
+    if (depth > stats.max_bucket_size) stats.max_bucket_size = depth;
+
     for (int i = 0; i < composite_list->length(); i++) {
       Tagged<MaybeObject> maybe_composite = composite_list->Get(i);
       if (maybe_composite.IsWeak()) {
         Tagged<JSComposite> existing_composite = Cast<JSComposite>(maybe_composite.GetHeapObjectAssumeWeak());
+        stats.total_equality_checks++;
         if (key->IsMatch(isolate, existing_composite)) {
           return handle(existing_composite, isolate);
         }
@@ -185,6 +190,14 @@ DirectHandle<JSComposite> LookupCompositeWithKey(Isolate* isolate, CompositeKey*
   DirectHandle<JSComposite> new_composite = key->CreateComposite(isolate);
   if (new_composite.is_null()) {
     return new_composite;  // Exception occurred
+  }
+
+  {
+    auto& stats = isolate->composite_stats();
+    stats.total_insertions++;
+    if (!IsTheHole(cached_entry, isolate)) {
+      stats.collision_insertions++;
+    }
   }
 
   // Add to cache
