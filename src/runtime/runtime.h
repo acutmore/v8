@@ -560,6 +560,7 @@ constexpr bool CanTriggerGC(T... properties) {
   F(ConstructInternalizedString, 1, 1)                                   \
   F(ConstructSlicedString, 2, 1)                                         \
   F(ConstructThinString, 1, 1)                                           \
+  F(CompositeStats, 0, 1)                                                \
   F(CurrentFrameIsTurbofan, 0, 1)                                        \
   F(DebugPrint, -1, 1, RuntimeCallProperty::kCannotTriggerGC)            \
   F(DebugPrintFloat, 5, 1)                                               \
