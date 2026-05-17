@@ -51,35 +51,30 @@ class CompositeKey {
     Tagged<Map> composite_map = composite->map();
     Tagged<DescriptorArray> descriptors = composite_map->instance_descriptors();
 
-    if (composite_map->NumberOfOwnDescriptors() != static_cast<int>(properties_.size())) {
+    int total = static_cast<int>(properties_.size());
+    if (composite_map->NumberOfOwnDescriptors() != total) {
       return false;
     }
 
     // Compare properties directly - no sorting needed since composite properties
     // are already stored in sorted order by key name
-    size_t prop_index = 0;
-    for (InternalIndex i : composite_map->IterateOwnDescriptors()) {
-      PropertyDetails details = descriptors->GetDetails(i);
+    for (int i = 0; i < total; i++) {
+      PropertyDetails details = descriptors->GetDetails(InternalIndex(i));
       if (details.location() != PropertyLocation::kField ||
           details.kind() != PropertyKind::kData) {
         return false;
       }
 
-      Tagged<Name> composite_key = descriptors->GetKey(i);
+      Tagged<Name> composite_key = descriptors->GetKey(InternalIndex(i));
+      if (!composite_key->Equals(*properties_[i].key)) {
+        return false;
+      }
+
       FieldIndex field_index = FieldIndex::ForDetails(composite_map, details);
       Tagged<Object> composite_value = composite->RawFastPropertyAt(field_index);
-
-      const Property& our_prop = properties_[prop_index];
-
-      if (!composite_key->Equals(*our_prop.key)) {
+      if (!Object::StrictEquals(*properties_[i].value, composite_value)) {
         return false;
       }
-
-      if (!Object::StrictEquals(*our_prop.value, composite_value)) {
-        return false;
-      }
-
-      prop_index++;
     }
 
     return true;
@@ -106,6 +101,12 @@ class CompositeKey {
     DirectHandle<Map> final_map = initial_map;
     size_t matched_properties = 0;
 
+    base::SmallVector<DirectHandle<Name>, 16> internalized_keys;
+    internalized_keys.reserve(properties_.size());
+    for (const Property& prop : properties_) {
+      internalized_keys.push_back(isolate->factory()->InternalizeName(prop.key));
+    }
+
     if (cached_map->NumberOfOwnDescriptors() > 0 &&
         cached_map->NumberOfOwnDescriptors() == static_cast<int>(properties_.size())) {
       bool perfect_match = true;
@@ -113,9 +114,8 @@ class CompositeKey {
 
       for (size_t i = 0; i < properties_.size(); ++i) {
         Tagged<Name> expected_key = descriptors->GetKey(InternalIndex(i));
-        DirectHandle<Name> internalized_key = isolate->factory()->InternalizeName(properties_[i].key);
 
-        if (*internalized_key != expected_key) {
+        if (*internalized_keys[i] != expected_key) {
           perfect_match = false;
           break;
         }
@@ -132,12 +132,6 @@ class CompositeKey {
         final_map = cached_map;
         matched_properties = properties_.size();
       }
-    }
-
-    base::SmallVector<DirectHandle<Name>, 16> internalized_keys;
-    internalized_keys.reserve(properties_.size());
-    for (const Property& prop : properties_) {
-      internalized_keys.push_back(isolate->factory()->InternalizeName(prop.key));
     }
 
     if (matched_properties < properties_.size()) {
@@ -174,7 +168,9 @@ class CompositeKey {
 
         if (current_map->is_dictionary_map()) {
           // Fallback to slow path if dictionary mode
-          DirectHandle<JSComposite> composite = isolate->factory()->NewJSComposite(initial_map);
+          DirectHandle<JSObject> composite_obj =
+               isolate->factory()->NewJSObjectFromMap(initial_map, AllocationType::kOld);
+          DirectHandle<JSComposite> composite = Cast<JSComposite>(composite_obj);
 
           for (size_t j = 0; j < properties_.size(); ++j) {
             MaybeDirectHandle<Object> result = JSObject::SetOwnPropertyIgnoreAttributes(
@@ -197,8 +193,10 @@ class CompositeKey {
       final_map = current_map;
     }
 
-    DirectHandle<JSComposite> composite = isolate->factory()->NewJSComposite(initial_map);
-    JSObject::MigrateToMap(isolate, composite, final_map);
+    DirectHandle<JSObject> composite_obj =
+          isolate->factory()->NewJSObjectFromMap(final_map, AllocationType::kOld);
+    DirectHandle<JSComposite> composite = Cast<JSComposite>(composite_obj);
+    JSObject::AllocateStorageForMap(isolate, composite, final_map);
 
     {
       DisallowGarbageCollection no_gc;
@@ -256,6 +254,7 @@ DirectHandle<JSComposite> LookupCompositeWithKey(Isolate* isolate, CompositeKey*
   DirectHandle<Smi> hash_key = handle(Smi::FromInt(static_cast<int32_t>(key->hash())), isolate);
 
   Tagged<Object> cached_entry = cache->Lookup(hash_key);
+
   if (!IsTheHole(cached_entry, isolate)) {
     DCHECK(IsWeakArrayList(cached_entry));
     DirectHandle<WeakArrayList> composite_list(Cast<WeakArrayList>(cached_entry), isolate);
@@ -292,7 +291,8 @@ DirectHandle<JSComposite> LookupCompositeWithKey(Isolate* isolate, CompositeKey*
 
   // Add to cache
   if (IsTheHole(cached_entry, isolate)) {
-    DirectHandle<WeakArrayList> single_list = isolate->factory()->NewWeakArrayList(1);
+    DirectHandle<WeakArrayList> single_list =
+        isolate->factory()->NewWeakArrayList(1, AllocationType::kOld);
     MaybeObjectDirectHandle weak_composite = MaybeObjectDirectHandle::Weak(new_composite);
     single_list = WeakArrayList::Append(isolate, single_list, weak_composite);
     Handle<ObjectHashTable> new_cache = ObjectHashTable::Put(cache, hash_key, single_list);
@@ -383,16 +383,27 @@ BUILTIN(CompositeConstructor) {
       // Normalize HeapNumber(0) to Smi(0)
       if (IsHeapNumber(*value) && Cast<HeapNumber>(*value)->value() == 0) {
         value = handle(Smi::FromInt(0), isolate);
+      } else if (IsString(*value)) {
+        value = isolate->factory()->InternalizeString(Cast<String>(value));
       }
 
       properties.emplace_back(key_name, value);
     }
 
-    // Sort properties by key name
-    std::sort(properties.begin(), properties.end(),
-      [isolate](const CompositeKey::Property& a, const CompositeKey::Property& b) {
-        return Name::CompareLessThan(isolate, a.key, b.key);
-      });
+    // Sort properties by key name, skipping if already sorted
+    auto compare = [isolate](const CompositeKey::Property& a, const CompositeKey::Property& b) {
+      return Name::CompareLessThan(isolate, a.key, b.key);
+    };
+    bool already_sorted = true;
+    for (size_t i = 1; i < properties.size(); ++i) {
+      if (compare(properties[i], properties[i - 1])) {
+        already_sorted = false;
+        break;
+      }
+    }
+    if (!already_sorted) {
+      std::sort(properties.begin(), properties.end(), compare);
+    }
 
   } else {
     // Slow path: use KeyAccumulator
@@ -412,10 +423,19 @@ BUILTIN(CompositeConstructor) {
       DirectHandle<Name> key(Cast<Name>(keys->get(i)), isolate);
       sorted_keys.push_back(key);
     }
-    std::sort(sorted_keys.begin(), sorted_keys.end(),
-      [isolate](const DirectHandle<Name>& a, const DirectHandle<Name>& b) {
-        return Name::CompareLessThan(isolate, a, b);
-      });
+    auto compare_keys = [isolate](const DirectHandle<Name>& a, const DirectHandle<Name>& b) {
+      return Name::CompareLessThan(isolate, a, b);
+    };
+    bool already_sorted = true;
+    for (size_t i = 1; i < sorted_keys.size(); ++i) {
+      if (compare_keys(sorted_keys[i], sorted_keys[i - 1])) {
+        already_sorted = false;
+        break;
+      }
+    }
+    if (!already_sorted) {
+      std::sort(sorted_keys.begin(), sorted_keys.end(), compare_keys);
+    }
 
     for (DirectHandle<Name> key : sorted_keys) {
       DirectHandle<Object> value;
@@ -430,6 +450,8 @@ BUILTIN(CompositeConstructor) {
 
       if (IsHeapNumber(*value) && Cast<HeapNumber>(*value)->value() == 0) {
         value = handle(Smi::FromInt(0), isolate);
+      } else if (IsString(*value)) {
+        value = isolate->factory()->InternalizeString(Cast<String>(value));
       }
 
       properties.emplace_back(key, value);
