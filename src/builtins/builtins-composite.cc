@@ -350,22 +350,76 @@ BUILTIN(CompositeConstructor) {
       return *LookupCompositeWithKey(isolate, &empty_key);
     }
 
-    // Collect enumerable string properties
-    for (InternalIndex i : input_map->IterateOwnDescriptors()) {
+    // Collect enumerable string properties in sorted key order.
+    // Cache the sort order per input map to avoid re-sorting on repeated calls.
+    DirectHandle<FixedArray> sort_order;
+
+    bool cache_hit = false;
+    if (v8_flags.composite_sort_cache) {
+      DirectHandle<NativeContext> native_ctx = isolate->native_context();
+      Tagged<Object> cached_input_map_obj =
+          native_ctx->js_composite_cached_input_map();
+      if (!IsUndefined(cached_input_map_obj) &&
+          cached_input_map_obj == *input_map) {
+        sort_order = DirectHandle<FixedArray>(
+            Cast<FixedArray>(native_ctx->js_composite_cached_sort_order()),
+            isolate);
+        cache_hit = true;
+      }
+    }
+
+    if (!cache_hit) {
+      struct KeyWithIndex {
+        Handle<Name> key;
+        int descriptor_index;
+      };
+      base::SmallVector<KeyWithIndex, 16> keys_to_sort;
+
+      for (InternalIndex i : input_map->IterateOwnDescriptors()) {
+        DisallowGarbageCollection no_gc;
+        Tagged<DescriptorArray> descriptors =
+            input_map->instance_descriptors(cage_base);
+        Tagged<Name> name = descriptors->GetKey(i);
+        if (!IsString(name, cage_base)) continue;
+        PropertyDetails details = descriptors->GetDetails(i);
+        if (details.IsDontEnum()) continue;
+        keys_to_sort.push_back({handle(name, isolate), i.as_int()});
+      }
+
+      std::sort(keys_to_sort.begin(), keys_to_sort.end(),
+                [isolate](const KeyWithIndex& a, const KeyWithIndex& b) {
+                  return Name::CompareLessThan(isolate, a.key, b.key);
+                });
+
+      sort_order = isolate->factory()->NewFixedArray(
+          static_cast<int>(keys_to_sort.size()), AllocationType::kOld);
+      for (size_t i = 0; i < keys_to_sort.size(); ++i) {
+        sort_order->set(static_cast<int>(i),
+                        Smi::FromInt(keys_to_sort[i].descriptor_index));
+      }
+      if (v8_flags.composite_sort_cache) {
+        DirectHandle<NativeContext> native_ctx = isolate->native_context();
+        native_ctx->set_js_composite_cached_input_map(*input_map);
+        native_ctx->set_js_composite_cached_sort_order(*sort_order);
+      }
+    }
+
+    // Collect properties in the determined sorted order
+    for (int i = 0; i < sort_order->length(); i++) {
+      InternalIndex desc_idx(Smi::ToInt(sort_order->get(i)));
       Handle<Name> key_name;
       PropertyDetails details = PropertyDetails::Empty();
       FieldIndex field_index;
 
       {
         DisallowGarbageCollection no_gc;
-        Tagged<DescriptorArray> descriptors = input_map->instance_descriptors(cage_base);
-        Tagged<Name> name = descriptors->GetKey(i);
-        if (!IsString(name, cage_base)) continue;  // Skip symbols
-        key_name = handle(Cast<String>(name), isolate);
-        details = descriptors->GetDetails(i);
+        Tagged<DescriptorArray> descriptors =
+            input_map->instance_descriptors(cage_base);
+        Tagged<Name> name = descriptors->GetKey(desc_idx);
+        details = descriptors->GetDetails(desc_idx);
         field_index = FieldIndex::ForDetails(*input_map, details);
+        key_name = handle(Cast<String>(name), isolate);
       }
-      if (details.IsDontEnum()) continue;  // Skip non-enumerable
 
       // Get property value
       DirectHandle<Object> value;
@@ -377,7 +431,8 @@ BUILTIN(CompositeConstructor) {
       } else {
         // Fallback for accessor properties or if map changed
         ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
-            isolate, value, JSReceiver::GetProperty(isolate, input_receiver, key_name));
+            isolate, value,
+            JSReceiver::GetProperty(isolate, input_receiver, key_name));
       }
 
       // Normalize HeapNumber(0) to Smi(0)
@@ -388,21 +443,6 @@ BUILTIN(CompositeConstructor) {
       }
 
       properties.emplace_back(key_name, value);
-    }
-
-    // Sort properties by key name, skipping if already sorted
-    auto compare = [isolate](const CompositeKey::Property& a, const CompositeKey::Property& b) {
-      return Name::CompareLessThan(isolate, a.key, b.key);
-    };
-    bool already_sorted = true;
-    for (size_t i = 1; i < properties.size(); ++i) {
-      if (compare(properties[i], properties[i - 1])) {
-        already_sorted = false;
-        break;
-      }
-    }
-    if (!already_sorted) {
-      std::sort(properties.begin(), properties.end(), compare);
     }
 
   } else {

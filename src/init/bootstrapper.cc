@@ -4585,6 +4585,10 @@ void Genesis::InitializeGlobal(DirectHandle<JSGlobalObject> global_object,
     native_context()->set_js_composite_cache(*composite_cache);
 
     native_context()->set_js_composite_cached_map(composite_fun->initial_map());
+    native_context()->set_js_composite_cached_input_map(
+        ReadOnlyRoots(isolate_).undefined_value());
+    native_context()->set_js_composite_cached_sort_order(
+        ReadOnlyRoots(isolate_).undefined_value());
   }
 
   {  // -- J S M o d u l e N a m e s p a c e
