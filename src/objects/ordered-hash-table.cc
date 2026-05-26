@@ -192,7 +192,6 @@ InternalIndex OrderedHashTable<Derived, entrysize>::FindEntry(
     }
 
     if (keys_equal) return InternalIndex(raw_entry);
-    raw_entry = NextChainEntryRaw(raw_entry);
   }
 
   return InternalIndex::NotFound();
@@ -245,7 +244,6 @@ HandleType<OrderedHashSet>::MaybeType OrderedHashSet::Add(
         }
 
         if (keys_equal) return table;
-        raw_entry = raw_table->NextChainEntryRaw(raw_entry);
       }
     }
   }

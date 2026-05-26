@@ -786,6 +786,9 @@ DEFINE_BOOL(empty_context_extension_dep, true,
 
 DEFINE_BOOL(json_stringify_fast_path, true, "Enable JSON.stringify fast-path")
 
+DEFINE_BOOL(composite_sort_cache, true,
+            "Cache the sorted descriptor order for Composite key construction")
+
 // TODO(jgruber): Remove this flag.
 DEFINE_BOOL(cache_property_key_string_adds, true,
             "Enable caching property keys created by concatenating strings")
